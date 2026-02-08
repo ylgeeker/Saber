@@ -23,12 +23,12 @@ import (
 )
 
 func TestID(t *testing.T) {
-	id, err := tools.MachineID()
+	id, err := tools.MachineID("saber-agent")
 	if err != nil {
 		t.Fatalf("failed to generate machine-id:%v", err)
 	}
 
-	id2, err := tools.MachineID()
+	id2, err := tools.MachineID("saber-agent")
 	if err != nil {
 		t.Fatalf("failed to generate machine-id:%v", err)
 	}

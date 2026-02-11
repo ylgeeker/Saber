@@ -14,15 +14,21 @@
  * limitations under the License.
 **/
 
-package service
+package server
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
 	"os-artificer/saber/pkg/logger"
 	"os-artificer/saber/pkg/proto"
+)
+
+var (
+	ErrConnectionClosed = errors.New("connection closed")
+	ErrSendChanFull     = errors.New("send channel full")
 )
 
 type Connection struct {
@@ -42,8 +48,8 @@ func (c *Connection) sendMessages(ctx context.Context) {
 		case <-ctx.Done():
 			return
 
-		case msg := <-c.SendChan:
-			if c.isClosed() {
+		case msg, ok := <-c.SendChan:
+			if !ok || c.isClosed() {
 				return
 			}
 
@@ -110,5 +116,20 @@ func (c *Connection) close() {
 	if !c.closed {
 		c.closed = true
 		close(c.SendChan)
+	}
+}
+
+// TrySend enqueues msg for sending to the client. It checks isClosed() to avoid writing to a
+// closed channel and uses non-blocking send so callers are not stuck when the channel is full.
+// Returns ErrConnectionClosed if the connection is closed, ErrSendChanFull if SendChan is full.
+func (c *Connection) TrySend(msg *proto.AgentResponse) error {
+	if c.isClosed() {
+		return ErrConnectionClosed
+	}
+	select {
+	case c.SendChan <- msg:
+		return nil
+	default:
+		return ErrSendChanFull
 	}
 }

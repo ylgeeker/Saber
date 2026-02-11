@@ -23,12 +23,19 @@ import (
 )
 
 var Cfg = Configuration{
-	Name:       "Agent",
-	Version:    "v1.0.0",
-	Discovery:  DiscoveryConfig{},
-	Controller: ControllerConfig{},
+	Name:    "Agent",
+	Version: "v1.0.0",
+
+	Discovery: DiscoveryConfig{},
+
+	Controller: ControllerConfig{
+		Endpoints:        "127.0.0.1:26688",
+		SyncMetaInterval: 30 * time.Second,
+	},
+
 	Reporters: []ReporterEntry{
-		{Type: "transfer",
+		{
+			Type: "transfer",
 			Config: map[string]any{
 				"endpoints": "127.0.0.1:26689",
 			},

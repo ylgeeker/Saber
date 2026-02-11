@@ -18,54 +18,59 @@ package controller
 
 import (
 	"context"
-	"net"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 
 	"os-artificer/saber/internal/controller/config"
-	"os-artificer/saber/internal/controller/service"
+	"os-artificer/saber/pkg/logger"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
-func setupGracefulShutdown(svr *service.Service) {
+func setupGracefulShutdown(svr *Service) {
 	sigC := make(chan os.Signal, 1)
 	signal.Notify(sigC, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
 		<-sigC
-
+		svr.Close()
 		os.Exit(0)
 	}()
 }
 
-func parseListenAddress(addr string) string {
-	addr = strings.TrimPrefix(addr, "tcp://")
-	if _, port, err := net.SplitHostPort(addr); err == nil && port != "" {
-		return ":" + port
+// initLogger initializes the global logger from agent config (pkg/logger).
+func initLogger(cfg *config.LogConfig) error {
+	if cfg == nil {
+		return nil
 	}
-	return addr
+
+	logCfg := logger.Config{
+		Filename:   cfg.FileName,
+		LogLevel:   cfg.LogLevel,
+		MaxSizeMB:  cfg.FileSize,
+		MaxBackups: cfg.MaxBackupCount,
+		MaxAge:     cfg.MaxBackupAge,
+	}
+
+	l := logger.NewZapLogger(logCfg)
+	logger.SetLogger(l)
+
+	return nil
 }
 
 func Run(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
-	address := ":26688"
-	if ConfigFilePath != "" {
-		viper.SetConfigFile(ConfigFilePath)
-		viper.SetConfigType("yaml")
-		if err := viper.ReadInConfig(); err == nil {
-			var cfg config.Configuration
-			if err := viper.Unmarshal(&cfg); err == nil && cfg.Service.ListenAddress != "" {
-				address = parseListenAddress(cfg.Service.ListenAddress)
-			}
-		}
+	address := loadControllerConfig()
+
+	if err := initLogger(&config.Cfg.Log); err != nil {
+		logger.Errorf("Failed to init logger: %v", err)
+		return err
 	}
 
-	svr := service.New(ctx, address, "")
+	svr := CreateService(ctx, address, "")
+
 	setupGracefulShutdown(svr)
 
 	return svr.Run()

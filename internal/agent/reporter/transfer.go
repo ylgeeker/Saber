@@ -39,35 +39,39 @@ import (
 var _ Reporter = (*TransferReporter)(nil)
 
 func init() {
-	RegisterReporter("transfer", func(ctx context.Context, opts any) (Reporter, error) {
-		o, ok := opts.(*config.ReporterOpts)
-		if !ok {
-			return nil, fmt.Errorf("transfer reporter expects *config.ReporterOpts, got %T", opts)
-		}
-		endpoints, _ := o.Config["endpoints"].(string)
-		if endpoints == "" {
-			return nil, fmt.Errorf("transfer reporter config missing or invalid endpoints")
-		}
+	RegisterReporter("transfer", newTransferReporterFromOpts)
+}
 
-		poolSize := constant.DefaultTransferPoolSize
-		if v, ok := o.Config["pool_size"]; ok {
-			if n, ok := toInt(v); ok && n > 0 {
-				poolSize = n
-			}
-		}
-		if v, ok := o.Config["connection_count"]; ok && poolSize == constant.DefaultTransferPoolSize {
-			if n, ok := toInt(v); ok && n > 0 {
-				poolSize = n
-			}
-		}
+// newTransferReporterFromOpts builds a TransferReporter from config.ReporterOpts (used by RegisterReporter).
+func newTransferReporterFromOpts(ctx context.Context, opts any) (Reporter, error) {
+	o, ok := opts.(*config.ReporterOpts)
+	if !ok {
+		return nil, fmt.Errorf("transfer reporter expects *config.ReporterOpts, got %T", opts)
+	}
+	endpoints, _ := o.Config["endpoints"].(string)
+	if endpoints == "" {
+		return nil, fmt.Errorf("transfer reporter config missing or invalid endpoints")
+	}
 
-		clientID, err := tools.MachineID("saber-agent")
-		if err != nil {
-			return nil, fmt.Errorf("failed to generate machine-id: %v", err)
+	poolSize := constant.DefaultTransferPoolSize
+	if v, ok := o.Config["pool_size"]; ok {
+		if n, ok := toInt(v); ok && n > 0 {
+			poolSize = n
 		}
+	}
 
-		return NewTransferReporter(ctx, endpoints, clientID, poolSize)
-	})
+	if v, ok := o.Config["connection_count"]; ok && poolSize == constant.DefaultTransferPoolSize {
+		if n, ok := toInt(v); ok && n > 0 {
+			poolSize = n
+		}
+	}
+
+	clientID, err := tools.MachineID("saber-agent")
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate machine-id: %v", err)
+	}
+
+	return NewTransferReporter(ctx, endpoints, clientID, poolSize)
 }
 
 func toInt(v any) (int, bool) {
@@ -85,12 +89,12 @@ func toInt(v any) (int, bool) {
 
 // poolEntry holds one gRPC connection and its PushData stream for the pool.
 type poolEntry struct {
-	mu                  sync.RWMutex
-	conn                *grpc.ClientConn
-	client              proto.TransferServiceClient
-	stream              proto.TransferService_PushDataClient
-	reconnecting        bool
-	reconnectAttempts    int
+	mu                sync.RWMutex
+	conn              *grpc.ClientConn
+	client            proto.TransferServiceClient
+	stream            proto.TransferService_PushDataClient
+	reconnecting      bool
+	reconnectAttempts int
 }
 
 // TransferReporter is the reporter for transfer using a pool of gRPC connections.
@@ -340,7 +344,7 @@ func (c *TransferReporter) SendMessage(ctx context.Context, content []byte) erro
 	}
 
 	for try := 0; try < poolSize; try++ {
-		idx := int(c.nextIndex.Add(1)%uint32(poolSize))
+		idx := int(c.nextIndex.Add(1) % uint32(poolSize))
 		entry := c.pool[idx]
 
 		entry.mu.RLock()

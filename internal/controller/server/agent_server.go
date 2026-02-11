@@ -13,10 +13,12 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
 **/
-package service
+
+package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -30,63 +32,50 @@ import (
 	"google.golang.org/grpc/keepalive"
 )
 
-type Service struct {
+var ErrConnectionNotFound = errors.New("connection not found")
+
+type AgentServer struct {
 	proto.UnimplementedControllerServiceServer
 
-	ctx         context.Context
-	address     string
-	serviceID   string
-	connections map[string]*Connection
-	mu          sync.RWMutex
+	ctx       context.Context
+	address   string
+	serviceID string
+	manager   *ConnectionManager
+	grpcSvr   *grpc.Server
 }
 
-func New(ctx context.Context, address string, serviceID string) *Service {
-	return &Service{
-		ctx:         ctx,
-		address:     address,
-		serviceID:   serviceID,
-		connections: make(map[string]*Connection),
+func New(ctx context.Context, address string, serviceID string) *AgentServer {
+	return &AgentServer{
+		ctx:       ctx,
+		address:   address,
+		serviceID: serviceID,
+		manager:   NewConnectionManager(),
 	}
 }
 
 // extractClientInfo is unused; clientID is read from first AgentRequest in Connect.
-func (s *Service) extractClientInfo(ctx context.Context) (string, map[string]string, error) {
+func (s *AgentServer) extractClientInfo(ctx context.Context) (string, map[string]string, error) {
 	clientID := fmt.Sprintf("client-%d", time.Now().UnixNano())
 	metadata := make(map[string]string)
 	_ = ctx
 	return clientID, metadata, nil
 }
 
-func (s *Service) registerConnection(clientID string, conn *Connection) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if existingConn, exists := s.connections[clientID]; exists {
-		existingConn.close()
+// SendToClient sends an AgentResponse to the connected client identified by clientID.
+// Returns ErrConnectionNotFound if no connection exists for clientID, or the error from
+// Connection.TrySend (e.g. ErrConnectionClosed, ErrSendChanFull).
+func (s *AgentServer) SendToClient(ctx context.Context, clientID string, resp *proto.AgentResponse) error {
+	if resp == nil {
+		return fmt.Errorf("resp is nil")
 	}
-
-	s.connections[clientID] = conn
-}
-
-func (s *Service) unregisterConnection(clientID string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if conn, exists := s.connections[clientID]; exists {
-		conn.close()
-		delete(s.connections, clientID)
+	conn, exists := s.manager.Get(clientID)
+	if !exists {
+		return ErrConnectionNotFound
 	}
+	return conn.TrySend(resp)
 }
 
-func (s *Service) getConnection(clientID string) (*Connection, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	conn, exists := s.connections[clientID]
-	return conn, exists
-}
-
-func (s *Service) Connect(stream proto.ControllerService_ConnectServer) error {
+func (s *AgentServer) Connect(stream proto.ControllerService_ConnectServer) error {
 	// Read first message to get clientID; same clientID reconnecting will close previous session.
 	req, err := stream.Recv()
 	if err != nil {
@@ -112,8 +101,8 @@ func (s *Service) Connect(stream proto.ControllerService_ConnectServer) error {
 		FirstReq:   req,
 	}
 
-	s.registerConnection(clientID, conn) // closes any existing connection with same clientID
-	defer s.unregisterConnection(clientID)
+	s.manager.Register(clientID, conn) // closes any existing connection with same clientID
+	defer s.manager.Unregister(clientID)
 
 	wg := &sync.WaitGroup{}
 
@@ -133,7 +122,7 @@ func (s *Service) Connect(stream proto.ControllerService_ConnectServer) error {
 	return nil
 }
 
-func (s *Service) Run() error {
+func (s *AgentServer) Run() error {
 
 	kasp := keepalive.ServerParameters{
 		Time:    constant.DefaultKeepalivePingInterval,
@@ -153,6 +142,7 @@ func (s *Service) Run() error {
 	)
 
 	proto.RegisterControllerServiceServer(svr, s)
+	s.grpcSvr = svr
 	lis, err := net.Listen("tcp", s.address)
 	if err != nil {
 		return err
@@ -160,4 +150,13 @@ func (s *Service) Run() error {
 
 	logger.Infof("Server listening at %v", lis.Addr())
 	return svr.Serve(lis)
+}
+
+// Close stops the gRPC server gracefully for use with controller’s setupGracefulShutdown.
+func (s *AgentServer) Close() error {
+	if s.grpcSvr != nil {
+		s.grpcSvr.GracefulStop()
+		s.grpcSvr = nil
+	}
+	return nil
 }

@@ -1,18 +1,25 @@
 name: Agent
-version: v1.0.0
+version: v1.0
 
 discovery:
-  endpoints: 127.0.0.1:26688
+  endpoints: tcp://127.0.0.1:26688
   syncMetaInterval: 30s
 
 controller:
-  endpoints: 127.0.0.1:26688
+  endpoints: tcp://127.0.0.1:26688
   syncMetaInterval: 30s
 
 reporters:
   - type: transfer
     config:
-      endpoints: 127.0.0.1:26689
+      endpoints: tcp://127.0.0.1:26689
+
+harvester:
+  plugins:
+    - name: host
+      options:
+        interval: 1s
+        timeout: 10s
 
 log:
   fileName: ./logs/agent.log

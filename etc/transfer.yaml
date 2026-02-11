@@ -1,5 +1,5 @@
 name: transfer
-version: v1.0.0
+version: v1.0
 
 discovery:
   etcdEndpoint: http://etcd-server:2379
@@ -14,13 +14,22 @@ discovery:
 service:
   listenAddress: tcp://127.0.0.1:26689
 
-kafka:
-  brokers:
-    - 127.0.0.1:9092
-  topic: saber-metrics
+source:
+  - type: agent
+    config:
+      endpoints: tcp://127.0.0.1:26688
+      syncMetaInterval: 30s
+
+sink:
+  - type: kafka
+    config:
+      brokers: ["127.0.0.1:9092"]
+      topic: "saber-metrics"
 
 log:
-  path: log/transfer.log
-  maxFileSize: 100
+  fileName: ./logs/transfer.log
+  logLevel: debug
+  fileSize: 100
   maxBackupCount: 10
   maxBackupAge: 10
+

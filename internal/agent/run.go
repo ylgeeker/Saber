@@ -28,13 +28,13 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func setupGracefulShutdown(service *Service) {
+func setupGracefulShutdown(svr *Service) {
 	sigC := make(chan os.Signal, 1)
 	signal.Notify(sigC, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
 		<-sigC
-		service.Close()
+		svr.Close()
 		os.Exit(0)
 	}()
 }

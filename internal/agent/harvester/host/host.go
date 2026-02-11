@@ -65,6 +65,9 @@ func (p *HostPlugin) Run(ctx context.Context) (plugin.EventC, error) {
 		defer p.wg.Done()
 		defer close(eventC)
 
+		timer := time.NewTimer(5 * time.Second)
+		defer timer.Stop()
+
 		for {
 			select {
 			case <-p.done:
@@ -75,9 +78,10 @@ func (p *HostPlugin) Run(ctx context.Context) (plugin.EventC, error) {
 				logger.Infof("host plugin run exited: %s", p.Name())
 				return
 
-			case <-time.After(1 * time.Second):
+			case <-timer.C:
 				if err := p.stats.CollectStats(); err != nil {
 					logger.Errorf("failed to collect host stats: %v", err)
+					timer.Reset(5 * time.Second)
 					continue
 				}
 
@@ -87,6 +91,7 @@ func (p *HostPlugin) Run(ctx context.Context) (plugin.EventC, error) {
 					Data:       p.stats,
 				}
 
+				timer.Reset(5 * time.Second)
 			}
 		}
 	}()

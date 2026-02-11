@@ -22,10 +22,12 @@ import (
 	"sync"
 
 	"os-artificer/saber/internal/agent/config"
+	"os-artificer/saber/internal/agent/controller"
 	"os-artificer/saber/internal/agent/harvester"
 	"os-artificer/saber/internal/agent/harvester/plugin"
 	"os-artificer/saber/internal/agent/reporter"
 	"os-artificer/saber/pkg/logger"
+	"os-artificer/saber/pkg/proto"
 	"os-artificer/saber/pkg/tools"
 )
 
@@ -34,17 +36,33 @@ type Service struct {
 	cancel    context.CancelFunc
 	reporter  reporter.Reporter
 	harvester *harvester.Harvester
+	ctrl      *controller.ControllerClient
 }
 
-// NewService builds a service from a reporter and harvester (used by CreateService).
-func NewService(ctx context.Context, rep reporter.Reporter, h *harvester.Harvester) *Service {
+// NewService builds a service from a reporter, harvester, and optional controller client (used by CreateService).
+// If ctrl is nil, no controller connection is used.
+func NewService(
+	ctx context.Context,
+	rep reporter.Reporter,
+	h *harvester.Harvester,
+	ctrl *controller.ControllerClient) *Service {
 	ctx, cancel := context.WithCancel(ctx)
-	return &Service{ctx: ctx, cancel: cancel, reporter: rep, harvester: h}
+	return &Service{ctx: ctx, cancel: cancel, reporter: rep, harvester: h, ctrl: ctrl}
 }
 
-// Run starts reporter and harvester, then blocks until context is cancelled.
+// Run starts reporter, harvester, and optional controller client, then blocks until context is cancelled.
 func (s *Service) Run() error {
 	var runWg sync.WaitGroup
+
+	if s.ctrl != nil {
+		runWg.Add(1)
+		tools.Go(func() {
+			defer runWg.Done()
+			if err := s.ctrl.Run(); err != nil && s.ctx.Err() == nil {
+				logger.Warnf("controller client exited: %v", err)
+			}
+		})
+	}
 
 	runWg.Add(1)
 	tools.Go(func() {
@@ -66,6 +84,12 @@ func (s *Service) Run() error {
 
 	<-s.ctx.Done()
 
+	if s.ctrl != nil {
+		if err := s.ctrl.Close(); err != nil {
+			logger.Warnf("controller client close: %v", err)
+		}
+	}
+
 	if err := s.reporter.Close(); err != nil {
 		logger.Warnf("reporter close: %v", err)
 	}
@@ -80,6 +104,13 @@ func (s *Service) Run() error {
 
 // Close cancels the service context so Run returns.
 func (s *Service) Close() error {
+	if s.ctrl != nil {
+		if err := s.ctrl.Close(); err != nil {
+			logger.Warnf("controller client close: %v", err)
+		}
+		s.ctrl = nil
+	}
+
 	if s.harvester != nil {
 		if err := s.harvester.Close(); err != nil {
 			logger.Warnf("harvester close: %v", err)
@@ -132,5 +163,28 @@ func CreateService(ctx context.Context, cfg *config.Configuration) (*Service, er
 	}
 
 	h := harvester.NewHarvester(rep, plugins)
-	return NewService(ctx, rep, h), nil
+
+	var ctrl *controller.ControllerClient
+	if cfg.Controller.Endpoints != "" {
+		clientID, err := tools.MachineID("saber-agent")
+		if err != nil {
+			_ = rep.Close()
+			return nil, fmt.Errorf("controller client requires machine-id: %w", err)
+		}
+		ctrl = controller.NewControllerClient(ctx, cfg.Controller.Endpoints, clientID)
+		ctrl.OnResponse(func(resp *proto.AgentResponse) {
+			if resp == nil {
+				return
+			}
+			if resp.Code != 0 {
+				logger.Warnf("controller response error: code=%d errmsg=%s", resp.Code, resp.GetErrmsg())
+				return
+			}
+			if len(resp.Payload) > 0 {
+				logger.Debugf("controller response: payload len=%d", len(resp.Payload))
+			}
+		})
+	}
+
+	return NewService(ctx, rep, h, ctrl), nil
 }

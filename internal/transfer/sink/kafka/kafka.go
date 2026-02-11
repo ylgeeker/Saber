@@ -24,17 +24,18 @@ import (
 	"os-artificer/saber/pkg/proto"
 
 	"github.com/segmentio/kafka-go"
+	kafkago "github.com/segmentio/kafka-go"
 )
 
 var _ sink.Sink = (*KafkaSink)(nil)
 
 // KafkaSink implements sink.Sink by writing TransferRequest to Kafka.
 type KafkaSink struct {
-	writer *kafka.Writer
+	writer *kafkago.Writer
 }
 
 // New returns a Sink that writes to the given Kafka writer.
-func New(writer *kafka.Writer) *KafkaSink {
+func New(writer *kafkago.Writer) *KafkaSink {
 	return &KafkaSink{writer: writer}
 }
 
@@ -43,6 +44,7 @@ func (k *KafkaSink) Write(ctx context.Context, req *proto.TransferRequest) error
 	if k.writer == nil || req == nil || len(req.Payload) == 0 {
 		return nil
 	}
+
 	key := []byte(req.ClientID)
 	if err := k.writer.WriteMessages(ctx, kafka.Message{
 		Key:   key,
@@ -59,5 +61,11 @@ func (k *KafkaSink) Close() error {
 	if k.writer == nil {
 		return nil
 	}
-	return k.writer.Close()
+
+	if err := k.writer.Close(); err != nil {
+		logger.Warnf("close kafka writer failed: %v", err)
+		return err
+	}
+
+	return nil
 }

@@ -61,6 +61,7 @@ func initLogger(cfg *config.LogConfig) error {
 
 func Run(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
+
 	address := loadTransferConfig()
 
 	if err := initLogger(&config.Cfg.Log); err != nil {
@@ -68,7 +69,11 @@ func Run(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	svr := CreateService(ctx, address, "")
+	svr, err := CreateService(ctx, address, "")
+	if err != nil {
+		logger.Errorf("Failed to create transfer service: %v", err)
+		return err
+	}
 
 	setupGracefulShutdown(svr)
 

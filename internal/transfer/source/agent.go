@@ -128,17 +128,21 @@ func (s *pushDataServer) PushData(stream proto.TransferService_PushDataServer) e
 			if err == io.EOF {
 				return nil
 			}
+
 			if err != nil {
 				logger.Warnf("stream recv error: %s, err: %v", connID, err)
 				return err
 			}
+
 			if clientID == "" && req.GetClientID() != "" {
 				clientID = req.GetClientID()
 				s.connMgr.UpdateMeta(connID, &ConnMeta{ClientID: clientID})
 			}
+
 			if len(req.GetPayload()) == 0 && req.GetClientID() == "" {
 				continue
 			}
+
 			if err := s.handler.OnTransferRequest(req); err != nil {
 				logger.Warnf("handler OnTransferRequest failed: %s, err: %v", connID, err)
 			}

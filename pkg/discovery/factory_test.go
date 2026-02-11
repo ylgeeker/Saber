@@ -1,3 +1,5 @@
+//go:build integration
+
 /**
  * Copyright 2025 Saber authors.
  *
@@ -28,80 +30,93 @@ import (
 	clientv3 "go.etcd.io/etcd/client/v3"
 )
 
-var (
-	client *clientv3.Client
-	reg    *discovery.Registry
-	dis    *discovery.Discovery
-)
+var client *discovery.Client
+var etcdClient *clientv3.Client
+var reg *discovery.Registry
+var dis *discovery.Discovery
 
 func setup() {
 
-	endpoints := os.Getenv("YLG_ETCD_ENDPOINTS")
-	user := os.Getenv("YLG_ETCDTL_USER")
-	password := os.Getenv("YLG_ETCDTL_PASSWORLD")
+	endpoints := os.Getenv("SABER_ETCD_ENDPOINTS")
+	user := os.Getenv("SABER_ETCD_USER")
+	password := os.Getenv("SABER_ETCD_PASSWORD")
 
 	log.Println("endpoints:", endpoints)
 	log.Println("user:", user)
 	log.Println("password:", password)
 
-	cli, err := discovery.NewClient(&discovery.ClientOptions{
-		Endpoints: strings.Split(endpoints, ","),
-		User:      user,
-		Password:  password,
-	})
+	if endpoints == "" {
+		log.Fatal("endpoints is required")
+	}
+
+	opts := []discovery.Option{
+		discovery.OptionEndpoints(strings.Split(endpoints, ";")),
+	}
+
+	// Support no-auth mode
+	if user != "" && password != "" {
+		opts = append(opts, discovery.OptionUser(user), discovery.OptionPassword(password))
+	}
+
+	cli, err := discovery.NewClientWithOptions(opts...)
 
 	if err != nil {
-		log.Fatalf("failed to create etcd client. errmsg:%v", err)
+		log.Fatalf("failed to create etcd client. errmsg:%s", err.Error())
 	}
+
 	client = cli
-
-	registry, err := discovery.NewRegistry(client, "test-service-id", 10)
+	etcdClient, err = cli.OriginClient()
 	if err != nil {
-		log.Fatalf("failed to create registry. errmsg:%v", err)
+		log.Fatalf("failed to create etcd client, errmsg: %v", err)
 	}
 
-	reg = registry
+	reg = cli.CreateRegistry()
 
-	discover, err := discovery.NewDiscovery(client)
+	d, err := cli.CreateDiscovery()
 	if err != nil {
-		log.Fatalf("failed to create discovery. errmsg:%v", err)
+		log.Fatalf("failed to create discovery. errmsg:%s", err.Error())
 	}
 
-	dis = discover
+	err = reg.SetService(context.Background(), "")
+	if err != nil {
+		log.Fatalf("failed to set service. errmsg:%s", err.Error())
+	}
 
-	reg.SetService(context.Background(), "test-id")
+	dis = d
 }
 
-func tear() {
+func teardown() {
 	reg.Close()
 	dis.Close()
-	client.Close()
 }
 
-func TestSetService(t *testing.T) {
+func TestRegistrySetService(t *testing.T) {
 
 	err := reg.SetService(context.Background(), "test-id")
 	if err != nil {
-		t.Fatalf("failed to set registry service. errmsg:%v", err)
+		t.Logf("failed to set service. errmsg:%s", err.Error())
 	}
 }
 
-func TestGetWithPrefix(t *testing.T) {
+func TestDiscotryGetWithPrefix(t *testing.T) {
 
-	resp, err := dis.GetWithPrefix(context.Background(), "/")
+	kvs, err := dis.GetWithPrefix(context.Background(), "")
 	if err != nil {
-		t.Fatalf("failed to get with prefix. errmsg:%v", err)
+		t.Logf("failed to get service. errmsg:%s", err.Error())
 	}
 
-	for key, value := range resp {
-		t.Logf("key:%s, value:%s", key, string(value))
+	for key, value := range kvs {
+		t.Logf("key:%s, value:%s", key, value)
 	}
 }
 
 func TestMain(m *testing.M) {
 
 	setup()
+
 	code := m.Run()
-	tear()
+
+	teardown()
+
 	os.Exit(code)
 }

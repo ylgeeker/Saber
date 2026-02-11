@@ -17,134 +17,147 @@
 package discovery
 
 import (
-	"fmt"
-	"strings"
-	"time"
-
 	"os-artificer/saber/pkg/gerrors"
 
 	clientv3 "go.etcd.io/etcd/client/v3"
-)
-
-type EventType int
-
-const (
-	EventTypePut EventType = iota
-	EventTypeDelete
-	EventTypeRecover
+	"go.etcd.io/etcd/client/v3/concurrency"
 )
 
 const (
-	defaultTTL                   = 6
-	defaultDialTimeout           = 5 * time.Second
-	defaultAutoSyncInterval      = 60 * time.Second
-	defaultKeepAliveTime         = 30 * time.Second
-	defaultKeepAliveTimeout      = 10 * time.Second
-	defautlRegistryRootKeyPrefix = "/os-artificer/saber/registry"
+	etcdKeySegmentSelf     = "self"
+	etcdKeySegmentMutex    = "mutex"
+	etcdKeySegmentElection = "election/leader"
 )
 
-type Event struct {
-	Type  EventType
-	Key   string
-	Value []byte
+// Client etcd client
+type Client struct {
+	opts             options
+	createEtcdClient func() (*clientv3.Client, error)
 }
 
-type ClientOptions struct {
-	Endpoints            []string
-	User                 string
-	Password             string
-	DialTimeout          time.Duration
-	AutoSyncInterval     time.Duration
-	DialKeepAliveTime    time.Duration
-	DialKeepAliveTimeout time.Duration
-}
-
-func NewClient(opt *ClientOptions) (*clientv3.Client, error) {
-
-	if opt == nil {
-		return nil, gerrors.New(gerrors.InvalidParameter, "")
+// NewClientWithOptions create etcd client with option
+func NewClientWithOptions(opts ...Option) (*Client, error) {
+	cli := &Client{
+		opts: defaultOptions,
 	}
 
-	if len(opt.Endpoints) == 0 {
-		return nil, gerrors.New(gerrors.InvalidParameter, "endpoints are required")
+	for _, opt := range opts {
+		if err := opt.apply(&cli.opts); err != nil {
+			return nil, err
+		}
 	}
 
-	if opt.User == "" {
-		return nil, gerrors.New(gerrors.InvalidParameter, "user is required")
+	if cli.opts.serviceName != "" {
+		cli.opts.registryRootKeyPrefix += "/" + cli.opts.serviceName
 	}
 
-	if opt.Password == "" {
-		return nil, gerrors.New(gerrors.InvalidParameter, "password is required")
-	}
+	cli.createEtcdClient = func() (*clientv3.Client, error) {
+		etcdCli, err := clientv3.New(cli.opts.Config())
+		if err != nil {
+			return nil, gerrors.Newf(gerrors.ComponentFailure, "%v", err)
+		}
 
-	if opt.DialTimeout == 0 {
-		opt.DialTimeout = defaultDialTimeout
-	}
-
-	if opt.AutoSyncInterval == 0 {
-		opt.AutoSyncInterval = defaultAutoSyncInterval
-	}
-
-	if opt.DialKeepAliveTime == 0 {
-		opt.DialKeepAliveTime = defaultKeepAliveTime
-	}
-
-	if opt.DialKeepAliveTimeout == 0 {
-		opt.DialKeepAliveTimeout = defaultKeepAliveTimeout
-	}
-
-	cli, err := clientv3.New(clientv3.Config{
-		Username:             opt.User,
-		Password:             opt.Password,
-		Endpoints:            opt.Endpoints,
-		DialTimeout:          opt.DialTimeout,
-		AutoSyncInterval:     opt.AutoSyncInterval,
-		DialKeepAliveTime:    opt.DialKeepAliveTime,
-		DialKeepAliveTimeout: opt.DialKeepAliveTimeout,
-	})
-
-	if err != nil {
-		return nil, gerrors.New(gerrors.ComponentFailure, err.Error())
+		return etcdCli, nil
 	}
 
 	return cli, nil
 }
 
-func NewRegistry(c *clientv3.Client, serviceId string, ttl int64) (*Registry, error) {
-	if c == nil {
-		return nil, gerrors.New(gerrors.InvalidParameter, "client is required")
-	}
+// OriginClient return the origin etcd client
+func (c Client) OriginClient() (*clientv3.Client, error) {
+	return c.createEtcdClient()
+}
 
-	serviceId = strings.TrimSpace(serviceId)
-	if serviceId == "" {
-		return nil, gerrors.New(gerrors.InvalidParameter, "service id is required")
-	}
+// GetRegistryPrefix returns the etcd key prefix under which same-module instances register.
+// Use with Discovery.GetWithPrefix / WatchWithPrefix to list or watch analysis instances.
+func (c Client) GetRegistryPrefix() string {
+	return c.opts.registryRootKeyPrefix
+}
 
-	if ttl < defaultTTL {
-		ttl = defaultTTL
+// GetSelfPrefix returns the etcd key prefix under which same-module instances register (self nodes).
+// Full key for one instance is GetSelfPrefix() + "/" + serviceID.
+// Use with GetWithPrefix to list all instances.
+func (c Client) GetSelfPrefix() string {
+	return c.opts.registryRootKeyPrefix + "/" + etcdKeySegmentSelf
+}
+
+// GetElectionPrefix returns the etcd key prefix for leader election.
+//
+//	Full key for one election is GetElectionPrefix() + "/" + name.
+func (c Client) GetElectionPrefix() string {
+	return c.opts.registryRootKeyPrefix + "/" + etcdKeySegmentElection
+}
+
+// CreateRegistry create new etcd registry
+func (c Client) CreateRegistry() *Registry {
+	rootKey := c.opts.registryRootKeyPrefix
+	if c.opts.serviceID != "" {
+		rootKey += "/" + etcdKeySegmentSelf + "/" + c.opts.serviceID
 	}
 
 	registry := &Registry{
-		serviceId: serviceId,
-		eventChan: make(chan *Event, 1024),
-		rootKey:   fmt.Sprintf("%s/%s", defautlRegistryRootKeyPrefix, serviceId),
-		ttl:       ttl,
-		client:    c,
+		serviceID:        c.opts.serviceID,
+		rootKey:          rootKey,
+		ttl:              defaultTTL,
+		createEtcdClient: c.createEtcdClient,
 	}
 
-	return registry, nil
+	return registry
 }
 
-func NewDiscovery(c *clientv3.Client) (*Discovery, error) {
-
-	if c == nil {
-		return nil, gerrors.New(gerrors.InvalidParameter, "client is required")
-	}
-
+// CreateDiscovery create etcd discovery
+func (c Client) CreateDiscovery() (*Discovery, error) {
 	discovery := &Discovery{
-		exit:   make(chan struct{}),
-		client: c,
+		quit:             make(chan struct{}),
+		createEtcdClient: c.createEtcdClient,
 	}
 
 	return discovery, nil
+}
+
+// CreateMutex returns concurrency mutex.
+func (c Client) CreateMutex(key string) (ConcurrencyMutex, error) {
+	etcdCli, err := c.createEtcdClient()
+	if err != nil {
+		return nil, err
+	}
+
+	session, err := concurrency.NewSession(etcdCli)
+	if err != nil {
+		return nil, gerrors.NewE(gerrors.ComponentFailure, err)
+	}
+
+	muKey := c.opts.registryRootKeyPrefix + "/" + etcdKeySegmentMutex + "/" + key
+	mu := &concurrencyMutex{
+		etcdCli: etcdCli,
+		session: session,
+		key:     muKey,
+		mutex:   concurrency.NewMutex(session, muKey),
+	}
+
+	return mu, nil
+}
+
+// CreateElection returns concurrency election.
+func (c Client) CreateElection(name string) (ConcurrencyElection, error) {
+	etcdCli, err := c.createEtcdClient()
+	if err != nil {
+		return nil, err
+	}
+
+	session, err := concurrency.NewSession(etcdCli)
+	if err != nil {
+		return nil, gerrors.NewE(gerrors.ComponentFailure, err)
+	}
+
+	electionKey := c.opts.registryRootKeyPrefix + "/" + etcdKeySegmentElection + "/" + name
+
+	election := &concurrencyElection{
+		etcdCli:  etcdCli,
+		session:  session,
+		election: concurrency.NewElection(session, electionKey),
+		key:      c.opts.serviceID,
+	}
+
+	return election, nil
 }

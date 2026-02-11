@@ -1,0 +1,261 @@
+//go:build integration
+
+/**
+ * Copyright 2025 Saber authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+**/
+
+package discovery_test
+
+import (
+	"context"
+	"testing"
+	"time"
+
+	"os-artificer/saber/pkg/discovery"
+	"os-artificer/saber/pkg/gerrors"
+
+	clientv3 "go.etcd.io/etcd/client/v3"
+)
+
+func TestGet(t *testing.T) {
+	ctx := context.Background()
+	testKey := "/test/discovery/get/key"
+	testValue := "discovery-test-value"
+
+	_, err := etcdClient.Put(ctx, testKey, testValue)
+	if err != nil {
+		t.Errorf("failed to put, errmsg: %v", err)
+	}
+
+	value, err := dis.Get(ctx, testKey)
+	if err != nil {
+		t.Errorf("failed to get value, errmsg: %v", err)
+	}
+	if string(value) != testValue {
+		t.Errorf("expected value is discovery-test-value, actual value is %v", value)
+	}
+
+	_, err = dis.Get(ctx, "discovery-null-value")
+	if err == nil {
+		t.Errorf("expected return error when get null key")
+	}
+	if err.(*gerrors.GError).Code() != gerrors.NotFound {
+		t.Errorf("expected err code is NotExists, actual code is %v", err.(*gerrors.GError).Code())
+	}
+
+	_, err = etcdClient.Delete(ctx, testKey)
+	if err != nil {
+		t.Errorf("failed to clear test key, errmsg: %v", err)
+	}
+}
+
+func TestGetWithPrefix(t *testing.T) {
+	ctx := context.Background()
+
+	prefix := "/test/discovery/get/prefix"
+	testKey1 := prefix + "/key1"
+	testKey2 := prefix + "/key2"
+	testValue1 := "value1"
+	testValue2 := "value2"
+
+	_, err := etcdClient.Put(ctx, testKey1, testValue1)
+	if err != nil {
+		t.Errorf("failed to put key1, errmsg: %v", err)
+	}
+
+	_, err = etcdClient.Put(ctx, testKey2, testValue2)
+	if err != nil {
+		t.Errorf("failed to put key2, errmsg: %v", err)
+	}
+
+	kvs, err := dis.GetWithPrefix(ctx, prefix)
+	if err != nil {
+		t.Errorf("failed to get prefix value, errmsg: %v", err)
+	}
+	if len(kvs) != 2 {
+		t.Errorf("expected to get 2 values, but got: %d", len(kvs))
+	}
+	if string(kvs[testKey1]) != testValue1 {
+		t.Errorf("expected value for key1 is %s, but got: %s", testValue1, string(kvs[testKey1]))
+	}
+	if string(kvs[testKey2]) != testValue2 {
+		t.Errorf("expected value for key2 is %s, but got: %s", testValue2, string(kvs[testKey2]))
+	}
+
+	_, err = etcdClient.Delete(ctx, prefix, clientv3.WithPrefix())
+	if err != nil {
+		t.Errorf("failed to clear test data, errmsg: %v", err)
+	}
+}
+
+func TestInvalidParametes(t *testing.T) {
+	ctx := context.Background()
+
+	_, err := dis.Watch(ctx, "")
+	if err == nil {
+		t.Errorf("expected watch error for empty key watch")
+	}
+	if err.(*gerrors.GError).Code() != gerrors.InvalidParameter {
+		t.Errorf("expected watch error code: InvalidParameter, actual: %v", err.(*gerrors.GError).Code())
+	}
+
+	_, err = dis.WatchWithPrefix(ctx, "")
+	if err == nil {
+		t.Errorf("expected watchWithPrefix error for empty key watch")
+	}
+	if err.(*gerrors.GError).Code() != gerrors.InvalidParameter {
+		t.Errorf("expected watchWithPrefix error code: InvalidParameter, actual: %v", err.(*gerrors.GError).Code())
+	}
+}
+
+func TestWatch(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	testKey := "/test/discovery/watch/key"
+	testValue := "discovery-test-value"
+
+	_, err := etcdClient.Put(ctx, testKey, testValue)
+	if err != nil {
+		t.Errorf("failed to put initial value, errmsg: %v", err)
+	}
+
+	watchChan, err := dis.Watch(ctx, testKey)
+	if err != nil {
+		t.Errorf("failed to start watch, errmsg: %v", err)
+	}
+
+	newValue := "discovery-new-value"
+	_, err = etcdClient.Put(ctx, testKey, newValue)
+	if err != nil {
+		t.Errorf("failed to change test value, errmsg: %v", err)
+	}
+
+	select {
+	case event := <-watchChan:
+		if event.EventType != discovery.WatchedEventPut {
+			t.Errorf("expected event type to be WatchEventPut(%d), but got: %d", discovery.WatchedEventPut, event.EventType)
+		}
+		if string(event.Value) != newValue {
+			t.Errorf("expected event value is %s, but got: %v", newValue, string(event.Value))
+		}
+	case <-ctx.Done():
+		t.Errorf("wait for watch put timeout")
+	}
+
+	_, err = etcdClient.Delete(ctx, testKey)
+	if err != nil {
+		t.Errorf("failed to delete value, errmsg: %v", err)
+	}
+
+	select {
+	case event := <-watchChan:
+		if event.EventType != discovery.WatchedEventDelete {
+			t.Errorf("expected event type to be WatchEventDelete(%d), but got: %d", discovery.WatchedEventDelete, event.EventType)
+		}
+	case <-ctx.Done():
+		t.Errorf("wait for watch delete timeout")
+	}
+}
+
+func TestWatchWithPrefix(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	prefix := "/discovery/test/watch/prefix"
+	testKey1 := prefix + "/key1"
+	testKey2 := prefix + "/key2"
+	testValue1 := "value1"
+	testValue2 := "value2"
+
+	_, err := etcdClient.Put(ctx, testKey1, testValue1)
+	if err != nil {
+		t.Errorf("failed to put initial key1 value, errmsg: %v", err)
+	}
+
+	_, err = etcdClient.Put(ctx, testKey2, testValue2)
+	if err != nil {
+		t.Errorf("failed to put initial key2 value, errmsg: %v", err)
+	}
+
+	watchChan, err := dis.WatchWithPrefix(ctx, prefix)
+	if err != nil {
+		t.Errorf("failed to start watch, errmsg: %v", err)
+	}
+
+	newValue1 := "new-value-1"
+	_, err = etcdClient.Put(ctx, testKey1, newValue1)
+	if err != nil {
+		t.Errorf("failed to change value1, errmsg: %v", err)
+	}
+
+	select {
+	case event := <-watchChan:
+		if event.EventType != discovery.WatchedEventPut {
+			t.Errorf("expected event type to be WatchEventPut(%d), but got: %d", discovery.WatchedEventPut, event.EventType)
+		}
+		if string(event.Value) != newValue1 {
+			t.Errorf("expected event value is %s, but got: %v", newValue1, string(event.Value))
+		}
+	case <-ctx.Done():
+		t.Errorf("wait for watch put timeout")
+	}
+
+	_, err = etcdClient.Delete(ctx, testKey1, clientv3.WithPrefix())
+	if err != nil {
+		t.Errorf("failed to delete test data, errmsg: %v", err)
+	}
+	select {
+	case event := <-watchChan:
+		if event.EventType != discovery.WatchedEventDelete {
+			t.Errorf("expected event type to be WatchEventDelete(%d), but got: %d", discovery.WatchedEventDelete, event.EventType)
+		}
+	case <-ctx.Done():
+		t.Errorf("wait for watch delete timeout")
+	}
+}
+
+func TestClose(t *testing.T) {
+	newdis, err := client.CreateDiscovery()
+	if err != nil {
+		t.Errorf("failed to create discovery instance, errmsg: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	testKey := "/discovery/test/close/key"
+
+	watchChan, err := newdis.Watch(ctx, testKey)
+	if err != nil {
+		t.Errorf("failed to start watch, errmsg: %v", err)
+	}
+
+	newdis.Close()
+
+	_, err = etcdClient.Put(ctx, testKey, "test-close-value")
+	if err != nil {
+		t.Errorf("failed to set key, errmsg: %v", err)
+	}
+
+	select {
+	case _, ok := <-watchChan:
+		if ok {
+			t.Errorf("expected watch channel closed")
+		}
+	case <-ctx.Done():
+		t.Errorf("wait for watch channel close timeout")
+	}
+}

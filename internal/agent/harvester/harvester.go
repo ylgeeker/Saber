@@ -21,9 +21,9 @@ import (
 	"encoding/json"
 	"sync"
 
-	"os-artificer/saber/internal/agent/reporter"
 	_ "os-artificer/saber/internal/agent/harvester/file"
 	_ "os-artificer/saber/internal/agent/harvester/host"
+	"os-artificer/saber/internal/agent/reporter"
 
 	"os-artificer/saber/internal/agent/harvester/plugin"
 	"os-artificer/saber/pkg/logger"
@@ -76,7 +76,7 @@ func (h *Harvester) Run(ctx context.Context) error {
 					return
 
 				case event := <-eventC:
-					logger.Debugf("harvester received event: %s, event: %v", plugin.Name(), event.Data)
+					logger.Debugf("harvester received event: %s, event: %#v", plugin.Name(), event.Data)
 					content, err := json.Marshal(event)
 					if err != nil {
 						logger.Warnf("harvester marshal event failed: %s, err: %v", plugin.Name(), err)

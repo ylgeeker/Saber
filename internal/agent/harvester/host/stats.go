@@ -29,19 +29,37 @@ import (
 	netutil "github.com/shirou/gopsutil/v4/net"
 )
 
+// NetworkStats holds info for one NIC only (one instance per 网卡). Dimension: MAC and IPs.
+type NetworkStats struct {
+	MAC       string   `json:"mac"`
+	IPs       []string `json:"ips"`
+	IfName    string   `json:"if_name"`
+	RxBytes   uint64   `json:"rx_bytes"`
+	TxBytes   uint64   `json:"tx_bytes"`
+	RxPackets uint64   `json:"rx_packets"`
+	TxPackets uint64   `json:"tx_packets"`
+	RxErrors  uint64   `json:"rx_errors"`
+	TxErrors  uint64   `json:"tx_errors"`
+	RxFifo    uint64   `json:"rx_fifo"`
+	TxFifo    uint64   `json:"tx_fifo"`
+}
+
+type DiskStats struct {
+	Mountpoint  string  `json:"mountpoint"`
+	UsedPercent float64 `json:"used_percent"`
+}
+
 // Stats is the stats for host metrics/info.
 type Stats struct {
-	CPU      float64  `json:"cpu"`
-	Memory   float64  `json:"memory"`
-	Disk     string   `json:"disk"`
-	Network  string   `json:"network"`
-	Uptime   string   `json:"uptime"`
-	Hostname string   `json:"hostname"`
-	IPs      []string `json:"ips"`
-	MACs     []string `json:"macs"`
-	OS       string   `json:"os"`
-	Arch     string   `json:"arch"`
-	Kernel   string   `json:"kernel"`
+	CPU      float64        `json:"cpu"`
+	Memory   float64        `json:"memory"`
+	Disk     []DiskStats    `json:"disk"`
+	Networks []NetworkStats `json:"networks"`
+	Uptime   string         `json:"uptime"`
+	Hostname string         `json:"hostname"`
+	OS       string         `json:"os"`
+	Arch     string         `json:"arch"`
+	Kernel   string         `json:"kernel"`
 }
 
 // NewStats creates a new Stats.
@@ -49,12 +67,10 @@ func NewStats() *Stats {
 	return &Stats{
 		CPU:      0,
 		Memory:   0,
-		Disk:     "",
-		Network:  "",
+		Disk:     []DiskStats{},
+		Networks: []NetworkStats{},
 		Uptime:   "",
 		Hostname: "",
-		IPs:      []string{""},
-		MACs:     []string{""},
 		OS:       "",
 		Arch:     "",
 		Kernel:   "",
@@ -81,35 +97,85 @@ func CollectMemory() float64 {
 	return v.UsedPercent
 }
 
-// CollectDisk returns root filesystem usage string (e.g. "45.2%") using gopsutil.
-func CollectDisk() string {
-	u, err := disk.Usage("/")
-	if err != nil {
-		return ""
+// CollectDisk returns disk usage for physical devices only (e.g. hard disks, CD-ROM, USB) using gopsutil; virtual/memory partitions (e.g. tmpfs, /dev/shm) are excluded.
+func CollectDisk() []DiskStats {
+	partitions, err := disk.Partitions(false)
+	if err != nil || len(partitions) == 0 {
+		return []DiskStats{}
 	}
 
-	return fmt.Sprintf("%.1f%%", u.UsedPercent)
-}
-
-// CollectNetwork returns "rx: N tx: N" (bytes) for physical NICs only, using gopsutil.
-func CollectNetwork() string {
-	// pernic=true to get per-interface counters so we can filter by physical NICs
-	counters, err := netutil.IOCounters(true)
-	if err != nil || len(counters) == 0 {
-		return ""
-	}
-
-	var rx, tx uint64
-	for i := range counters {
-		if !isPhysicalInterface(counters[i].Name) {
+	diskStats := make([]DiskStats, 0)
+	for _, p := range partitions {
+		u, err := disk.Usage(p.Mountpoint)
+		if err != nil {
 			continue
 		}
 
-		rx += counters[i].BytesRecv
-		tx += counters[i].BytesSent
+		diskStats = append(diskStats, DiskStats{
+			Mountpoint:  p.Mountpoint,
+			UsedPercent: u.UsedPercent,
+		})
 	}
 
-	return fmt.Sprintf("rx: %d tx: %d", rx, tx)
+	return diskStats
+}
+
+// CollectNetwork returns one NetworkStats per physical NIC (one 网卡 per record). Each record has that NIC's MAC, IPs, IfName, and traffic counters.
+func CollectNetwork() []NetworkStats {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return []NetworkStats{}
+	}
+
+	counterMap := make(map[string]netutil.IOCountersStat)
+	if counters, err := netutil.IOCounters(true); err == nil {
+		for i := range counters {
+			counterMap[counters[i].Name] = counters[i]
+		}
+	}
+
+	out := make([]NetworkStats, 0)
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 {
+			continue
+		}
+		if !isPhysicalInterface(iface.Name) {
+			continue
+		}
+
+		mac := ""
+		if iface.HardwareAddr != nil {
+			mac = iface.HardwareAddr.String()
+		}
+		ips := make([]string, 0)
+		addrs, _ := iface.Addrs()
+		for _, addr := range addrs {
+			ipnet, ok := addr.(*net.IPNet)
+			if !ok || ipnet.IP.IsLoopback() {
+				continue
+			}
+			if ip := ipnet.IP.To4(); ip != nil {
+				ips = append(ips, ip.String())
+			}
+		}
+
+		c := counterMap[iface.Name]
+		out = append(out, NetworkStats{
+			MAC:       mac,
+			IPs:       ips,
+			IfName:    iface.Name,
+			RxBytes:   c.BytesRecv,
+			TxBytes:   c.BytesSent,
+			RxPackets: c.PacketsRecv,
+			TxPackets: c.PacketsSent,
+			RxErrors:  c.Errin,
+			TxErrors:  c.Errout,
+			RxFifo:    c.Fifoin,
+			TxFifo:    c.Fifoout,
+		})
+	}
+
+	return out
 }
 
 // CollectUptime returns uptime string (e.g. "3d12h") using gopsutil.
@@ -142,62 +208,6 @@ func CollectHostname() string {
 	}
 
 	return info.Hostname
-}
-
-// CollectIP returns the first IPv4 address of a physical network interface.
-func CollectIPs() []string {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return []string{}
-	}
-
-	ips := make([]string, 0)
-
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp == 0 {
-			continue
-		}
-		if !isPhysicalInterface(iface.Name) {
-			continue
-		}
-
-		addrs, _ := iface.Addrs()
-		for _, addr := range addrs {
-			ipnet, ok := addr.(*net.IPNet)
-			if !ok || ipnet.IP.IsLoopback() {
-				continue
-			}
-
-			if ip := ipnet.IP.To4(); ip != nil {
-				ips = append(ips, ip.String())
-			}
-		}
-	}
-
-	return ips
-}
-
-// CollectMACs returns the MAC addresses of all physical NICs.
-func CollectMACs() []string {
-	ifaces, err := net.Interfaces()
-	if err != nil {
-		return []string{}
-	}
-
-	macs := make([]string, 0)
-	for _, iface := range ifaces {
-		if iface.Flags&net.FlagUp == 0 || iface.HardwareAddr == nil {
-			continue
-		}
-
-		if !isPhysicalInterface(iface.Name) {
-			continue
-		}
-
-		macs = append(macs, iface.HardwareAddr.String())
-	}
-
-	return macs
 }
 
 // CollectOS returns OS/platform info using gopsutil host.
@@ -242,12 +252,10 @@ func (s *Stats) CollectStats() error {
 	s.Memory = CollectMemory()
 
 	s.Disk = CollectDisk()
-	s.Network = CollectNetwork()
+	s.Networks = CollectNetwork()
 
 	s.Uptime = CollectUptime()
 	s.Hostname = CollectHostname()
-	s.IPs = CollectIPs()
-	s.MACs = CollectMACs()
 
 	s.OS = CollectOS()
 	s.Arch = CollectArch()

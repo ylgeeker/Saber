@@ -49,3 +49,28 @@ func TestSequenceID(t *testing.T) {
 		t.Logf("sequence-id:%d", id)
 	}
 }
+
+func TestHash(t *testing.T) {
+	// Same input and bits => same output (deterministic)
+	const s = "hello"
+	h1 := tools.Hash(s, 10)
+	h2 := tools.Hash(s, 10)
+	if h1 != h2 {
+		t.Errorf("Hash(%q, 10) = %d, %d; want same value", s, h1, h2)
+	}
+	// Different input => different output (with high probability)
+	hOther := tools.Hash("world", 10)
+	if h1 == hOther {
+		t.Errorf("Hash(%q, 10) == Hash(\"world\", 10) = %d; expect different", s, h1)
+	}
+	// Different bits => different mask; bits=8 => result < 256
+	h8 := tools.Hash(s, 8)
+	if h8 >= 256 {
+		t.Errorf("Hash(%q, 8) = %d; want < 256", s, h8)
+	}
+	// bits=1 => result 0 or 1
+	h1bit := tools.Hash(s, 1)
+	if h1bit != 0 && h1bit != 1 {
+		t.Errorf("Hash(%q, 1) = %d; want 0 or 1", s, h1bit)
+	}
+}

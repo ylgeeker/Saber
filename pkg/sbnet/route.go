@@ -17,6 +17,8 @@
 package sbnet
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 )
 
@@ -31,50 +33,50 @@ type Route struct {
 
 // Get returns a public GET route.
 func Get(path string, h gin.HandlerFunc) Route {
-	return Route{Method: "GET", Path: path, Handler: h}
+	return Route{Method: http.MethodGet, Path: path, Handler: h}
 }
 
 // Post returns a public POST route.
 func Post(path string, h gin.HandlerFunc) Route {
-	return Route{Method: "POST", Path: path, Handler: h}
+	return Route{Method: http.MethodPost, Path: path, Handler: h}
 }
 
 // Put returns a public PUT route.
 func Put(path string, h gin.HandlerFunc) Route {
-	return Route{Method: "PUT", Path: path, Handler: h}
+	return Route{Method: http.MethodPut, Path: path, Handler: h}
 }
 
 // Patch returns a public PATCH route.
 func Patch(path string, h gin.HandlerFunc) Route {
-	return Route{Method: "PATCH", Path: path, Handler: h}
+	return Route{Method: http.MethodPatch, Path: path, Handler: h}
 }
 
 // Delete returns a public DELETE route.
 func Delete(path string, h gin.HandlerFunc) Route {
-	return Route{Method: "DELETE", Path: path, Handler: h}
+	return Route{Method: http.MethodDelete, Path: path, Handler: h}
 }
 
 // AuthGet returns a GET route under the given auth group prefix.
 func AuthGet(prefix, path string, h gin.HandlerFunc) Route {
-	return Route{Method: "GET", Path: path, Handler: h, AuthPrefix: prefix}
+	return Route{Method: http.MethodGet, Path: path, Handler: h, AuthPrefix: prefix}
 }
 
 // AuthPost returns a POST route under the given auth group prefix.
 func AuthPost(prefix, path string, h gin.HandlerFunc) Route {
-	return Route{Method: "POST", Path: path, Handler: h, AuthPrefix: prefix}
+	return Route{Method: http.MethodPost, Path: path, Handler: h, AuthPrefix: prefix}
 }
 
 // AuthPut returns a PUT route under the given auth group prefix.
 func AuthPut(prefix, path string, h gin.HandlerFunc) Route {
-	return Route{Method: "PUT", Path: path, Handler: h, AuthPrefix: prefix}
+	return Route{Method: http.MethodPut, Path: path, Handler: h, AuthPrefix: prefix}
 }
 
 // AuthPatch returns a PATCH route under the given auth group prefix.
 func AuthPatch(prefix, path string, h gin.HandlerFunc) Route {
-	return Route{Method: "PATCH", Path: path, Handler: h, AuthPrefix: prefix}
+	return Route{Method: http.MethodPatch, Path: path, Handler: h, AuthPrefix: prefix}
 }
 
 // AuthDelete returns a DELETE route under the given auth group prefix.
 func AuthDelete(prefix, path string, h gin.HandlerFunc) Route {
-	return Route{Method: "DELETE", Path: path, Handler: h, AuthPrefix: prefix}
+	return Route{Method: http.MethodDelete, Path: path, Handler: h, AuthPrefix: prefix}
 }

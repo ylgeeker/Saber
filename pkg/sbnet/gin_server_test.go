@@ -26,10 +26,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func init() {
-	gin.SetMode(gin.TestMode)
-}
-
 // Usage examples for the sbnet gin server. Simple binding: use srv.GET(path, handler)
 // for public routes and srv.AuthGroup(prefix).GET(path, handler) for auth; or
 // NewServer(WithRoutes(Get("/ping", h), AuthGet("/api", "/me", meH))). See
@@ -37,10 +33,10 @@ func init() {
 // TestServer_* / TestRun* tests below.
 
 // ExampleNewGinServer shows the minimal usage: create a default Gin engine with
-// /health and serve a request via httptest.
+// /test and serve a request via httptest.
 func ExampleNewGinServer() {
 	router := NewGinServer()
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -57,10 +53,10 @@ func ExampleNewGinServer() {
 }
 
 // ExampleNewServer shows the configurable server: NewServer() with default options
-// and serving /health through Engine().
+// and serving /test through Engine().
 func ExampleNewServer() {
 	srv := NewServer()
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	srv.Engine().ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
@@ -88,7 +84,7 @@ func (e *exampleRegistrar) Register(s *Server) {
 }
 
 // ExampleNewServer_withRegistrars shows full usage: APIRegistrar for public and
-// auth routes, WithAuthMiddleware and WithRegistrars, then requesting /health,
+// auth routes, WithAuthMiddleware and WithRegistrars, then requesting /test,
 // /ping, and /api/me.
 func ExampleNewServer_withRegistrars() {
 	authHeader := "X-Authenticated"
@@ -100,12 +96,12 @@ func ExampleNewServer_withRegistrars() {
 		WithRegistrars(&exampleRegistrar{}),
 	)
 
-	// GET /health
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	// GET /test
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	srv.Engine().ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
-		panic("health: expected 200")
+		panic("test: expected 200")
 	}
 
 	// GET /ping (public)
@@ -204,14 +200,14 @@ func TestNewServer_WithRoutes_registersPublicAndAuthRoutes(t *testing.T) {
 	}
 }
 
-func TestNewGinServer_health(t *testing.T) {
+func TestNewGinServer_test(t *testing.T) {
 	router := NewGinServer()
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Errorf("GET /health status = %d, want %d", rec.Code, http.StatusOK)
+		t.Errorf("GET /test status = %d, want %d", rec.Code, http.StatusOK)
 	}
 	var body map[string]string
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
@@ -222,14 +218,14 @@ func TestNewGinServer_health(t *testing.T) {
 	}
 }
 
-func TestNewServer_health(t *testing.T) {
+func TestNewServer_test(t *testing.T) {
 	srv := NewServer()
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	srv.Engine().ServeHTTP(rec, req)
 
 	if rec.Code != http.StatusOK {
-		t.Errorf("GET /health status = %d, want %d", rec.Code, http.StatusOK)
+		t.Errorf("GET /test status = %d, want %d", rec.Code, http.StatusOK)
 	}
 	var body map[string]string
 	if err := json.NewDecoder(rec.Body).Decode(&body); err != nil {
@@ -300,11 +296,11 @@ func TestServer_Engine_returnsEngine(t *testing.T) {
 	if engine == nil {
 		t.Fatal("Engine() returned nil")
 	}
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	engine.ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
-		t.Errorf("GET /health via Engine() status = %d, want %d", rec.Code, http.StatusOK)
+		t.Errorf("GET /test via Engine() status = %d, want %d", rec.Code, http.StatusOK)
 	}
 }
 
@@ -337,17 +333,17 @@ func TestRunListener_servesHealth(t *testing.T) {
 		_ = router.RunListener(lis)
 	}()
 
-	resp, err := http.Get("http://" + addr + "/health")
+	resp, err := http.Get("http://" + addr + "/test")
 	if err != nil {
 		lis.Close()
 		<-done
-		t.Fatalf("GET /health: %v", err)
+		t.Fatalf("GET /test: %v", err)
 	}
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		lis.Close()
 		<-done
-		t.Errorf("GET /health status = %d, want %d", resp.StatusCode, http.StatusOK)
+		t.Errorf("GET /test status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
 	lis.Close()
 	<-done
@@ -355,11 +351,11 @@ func TestRunListener_servesHealth(t *testing.T) {
 
 func TestNewServer_WithRequestLogging_disabled(t *testing.T) {
 	srv := NewServer(WithRequestLogging(false))
-	req := httptest.NewRequest(http.MethodGet, "/health", nil)
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
 	rec := httptest.NewRecorder()
 	srv.Engine().ServeHTTP(rec, req)
 	if rec.Code != http.StatusOK {
-		t.Errorf("GET /health with request logging disabled status = %d, want %d", rec.Code, http.StatusOK)
+		t.Errorf("GET /test with request logging disabled status = %d, want %d", rec.Code, http.StatusOK)
 	}
 }
 
@@ -388,31 +384,31 @@ func TestServer_Run_servesRegisteredRoutes(t *testing.T) {
 		_ = srv.Engine().RunListener(lis)
 	}()
 
-	// GET /health
-	resp, err := http.Get("http://" + addr + "/health")
+	// GET /test
+	resp, err := http.Get("http://" + addr + "/test")
 	if err != nil {
 		lis.Close()
 		<-done
-		t.Fatalf("GET /health: %v", err)
+		t.Fatalf("GET /test: %v", err)
 	}
 	if resp.StatusCode != http.StatusOK {
 		resp.Body.Close()
 		lis.Close()
 		<-done
-		t.Errorf("GET /health status = %d, want %d", resp.StatusCode, http.StatusOK)
+		t.Errorf("GET /test status = %d, want %d", resp.StatusCode, http.StatusOK)
 	}
-	var healthBody map[string]string
-	if err := json.NewDecoder(resp.Body).Decode(&healthBody); err != nil {
+	var testBody map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&testBody); err != nil {
 		resp.Body.Close()
 		lis.Close()
 		<-done
-		t.Fatalf("decode /health body: %v", err)
+		t.Fatalf("decode /test body: %v", err)
 	}
 	resp.Body.Close()
-	if healthBody["status"] != "ok" {
+	if testBody["status"] != "ok" {
 		lis.Close()
 		<-done
-		t.Errorf("GET /health body status = %q, want ok", healthBody["status"])
+		t.Errorf("GET /test body status = %q, want ok", testBody["status"])
 	}
 
 	// GET /api/echo

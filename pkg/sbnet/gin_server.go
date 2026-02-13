@@ -26,6 +26,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func init() {
+	gin.SetMode(gin.ReleaseMode)
+}
+
 // APIRegistrar registers RESTful routes. Register may use s.Engine() for public
 // routes and s.AuthGroup(path) for routes that require authentication.
 type APIRegistrar interface {
@@ -60,8 +64,8 @@ func NewServer(opts ...Option) *Server {
 		engine.Use(s.requestLogMiddleware())
 	}
 
-	// Health endpoint
-	engine.GET("/health", func(c *gin.Context) {
+	// Test endpoint
+	engine.GET("/test", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
@@ -76,12 +80,12 @@ func NewServer(opts ...Option) *Server {
 	return s
 }
 
-// NewGinServer returns a default Gin engine with a /health endpoint.
+// NewGinServer returns a default Gin engine with a /test endpoint.
 // For configurable server with RESTful registration, auth, and log injection,
 // use NewServer and Server.Run instead.
 func NewGinServer() *gin.Engine {
 	router := gin.Default()
-	router.GET("/health", func(c *gin.Context) {
+	router.GET("/test", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 	return router
@@ -146,19 +150,19 @@ func (s *Server) applyRoute(r Route) {
 
 	register := func(g *gin.RouterGroup) {
 		switch r.Method {
-		case "GET":
+		case http.MethodGet:
 			g.GET(r.Path, r.Handler)
 
-		case "POST":
+		case http.MethodPost:
 			g.POST(r.Path, r.Handler)
 
-		case "PUT":
+		case http.MethodPut:
 			g.PUT(r.Path, r.Handler)
 
-		case "PATCH":
+		case http.MethodPatch:
 			g.PATCH(r.Path, r.Handler)
 
-		case "DELETE":
+		case http.MethodDelete:
 			g.DELETE(r.Path, r.Handler)
 		}
 	}

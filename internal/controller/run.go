@@ -26,6 +26,7 @@ import (
 	"os-artificer/saber/pkg/logger"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 func setupGracefulShutdown(svr *Service) {
@@ -59,6 +60,26 @@ func initLogger(cfg *config.LogConfig) error {
 	return nil
 }
 
+// reloadConfig re-reads config from ConfigFilePath and re-inits logger (for SIGHUP).
+func reloadConfig() {
+	if ConfigFilePath == "" {
+		return
+	}
+	viper.SetConfigFile(ConfigFilePath)
+	viper.SetConfigType("yaml")
+	if err := viper.ReadInConfig(); err != nil {
+		return
+	}
+	if err := viper.Unmarshal(&config.Cfg); err != nil {
+		return
+	}
+	if err := initLogger(&config.Cfg.Log); err != nil {
+		logger.Warnf("reload config: init logger failed: %v", err)
+		return
+	}
+	logger.Infof("config reloaded")
+}
+
 func Run(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
@@ -72,6 +93,14 @@ func Run(cmd *cobra.Command, args []string) error {
 	svr := CreateService(ctx, address, "")
 
 	setupGracefulShutdown(svr)
+
+	reloadCh := make(chan os.Signal, 1)
+	signal.Notify(reloadCh, syscall.SIGHUP)
+	go func() {
+		for range reloadCh {
+			reloadConfig()
+		}
+	}()
 
 	return svr.Run()
 }

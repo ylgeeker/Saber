@@ -26,6 +26,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"os-artificer/saber/pkg/app"
 
@@ -128,4 +129,12 @@ func runStop(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("send SIGTERM: %w", err)
 	}
 	return nil
+}
+
+func runRestart(cmd *cobra.Command, args []string) error {
+	if err := runStop(cmd, args); err != nil && err.Error() != "agent not running" {
+		return err
+	}
+	time.Sleep(1 * time.Second)
+	return runStart(cmd, args)
 }

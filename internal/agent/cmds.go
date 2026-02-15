@@ -35,9 +35,7 @@ var VersionCmd = &cobra.Command{
 var RestartCmd = &cobra.Command{
 	Use:   "restart",
 	Short: "Restart Agent",
-	Run: func(cmd *cobra.Command, args []string) {
-
-	},
+	RunE:  runRestart,
 }
 
 // ReloadCmd reloads the agent

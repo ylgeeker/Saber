@@ -74,7 +74,11 @@ func (d *Daemon) monitor(child *sbproc.Child) {
 		var err error
 		child, err = d.startChild()
 		if err != nil {
-			return
+			if d.ctx.Err() != nil {
+				return
+			}
+			time.Sleep(time.Second)
+			continue
 		}
 	}
 }

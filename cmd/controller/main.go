@@ -33,6 +33,12 @@ func main() {
 
 	rootCmd.PersistentFlags().StringVarP(&controller.ConfigFilePath, "config", "c", "./etc/controller.yaml", "")
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
+
+	rootCmd.AddCommand(controller.StartCmd)
+	rootCmd.AddCommand(controller.StopCmd)
+	rootCmd.AddCommand(controller.RestartCmd)
+	rootCmd.AddCommand(controller.ReloadCmd)
+	rootCmd.AddCommand(controller.HealthCheckCmd)
 	rootCmd.AddCommand(controller.VersionCmd)
 
 	if err := rootCmd.Execute(); err != nil {

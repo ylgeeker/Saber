@@ -28,12 +28,12 @@ var Cfg = Configuration{
 
 	AccessServers: AccessServerConfig{
 		Type:             "etcd",
-		Endpoints:        "127.0.0.1:2379",
+		Endpoints:        "tcp://127.0.0.1:2379",
 		SyncMetaInterval: 30 * time.Second,
 	},
 
 	Controller: ControllerConfig{
-		Endpoints:        "127.0.0.1:26688",
+		Endpoints:        "tcp://127.0.0.1:26688",
 		SyncMetaInterval: 30 * time.Second,
 	},
 
@@ -41,7 +41,7 @@ var Cfg = Configuration{
 		{
 			Type: "transfer",
 			Config: map[string]any{
-				"endpoints": "127.0.0.1:26689",
+				"endpoints": "tcp://127.0.0.1:26689",
 			},
 		},
 	},

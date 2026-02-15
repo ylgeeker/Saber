@@ -29,3 +29,38 @@ var VersionCmd = &cobra.Command{
 		version.Print("saber Controller Server")
 	},
 }
+
+var RestartCmd = &cobra.Command{
+	Use:   "restart",
+	Short: "Restart Transfer Server",
+	Run: func(cmd *cobra.Command, args []string) {
+	},
+}
+
+var ReloadCmd = &cobra.Command{
+	Use:   "reload",
+	Short: "Reload Transfer Server",
+	Run: func(cmd *cobra.Command, args []string) {
+	},
+}
+
+var StopCmd = &cobra.Command{
+	Use:   "stop",
+	Short: "Stop Transfer Server",
+	Run: func(cmd *cobra.Command, args []string) {
+	},
+}
+
+var StartCmd = &cobra.Command{
+	Use:   "start",
+	Short: "Start Transfer Server",
+	Run: func(cmd *cobra.Command, args []string) {
+	},
+}
+
+var HealthCheckCmd = &cobra.Command{
+	Use:   "health",
+	Short: "Health Check Transfer Server",
+	Run: func(cmd *cobra.Command, args []string) {
+	},
+}

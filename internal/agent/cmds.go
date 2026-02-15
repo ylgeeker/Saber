@@ -22,10 +22,54 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// VersionCmd prints the version information of the agent
 var VersionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print Version Information",
 	Run: func(cmd *cobra.Command, args []string) {
 		version.Print("saber Agent")
+	},
+}
+
+// RestartCmd restarts the agent
+var RestartCmd = &cobra.Command{
+	Use:   "restart",
+	Short: "Restart Agent",
+	Run: func(cmd *cobra.Command, args []string) {
+
+	},
+}
+
+// ReloadCmd reloads the agent
+var ReloadCmd = &cobra.Command{
+	Use:   "reload",
+	Short: "Reload Agent",
+	Run: func(cmd *cobra.Command, args []string) {
+
+	},
+}
+
+// StopCmd stops the agent
+var StopCmd = &cobra.Command{
+	Use:   "stop",
+	Short: "Stop Agent",
+	Run: func(cmd *cobra.Command, args []string) {
+
+	},
+}
+
+// StartCmd starts the agent
+var StartCmd = &cobra.Command{
+	Use:   "start",
+	Short: "Start Agent",
+	RunE:  runStart,
+}
+
+// HealthCheckCmd checks the health of the agent
+var HealthCheckCmd = &cobra.Command{
+	Use:   "health",
+	Short: "Health Check Agent",
+	Run: func(cmd *cobra.Command, args []string) {
+
 	},
 }

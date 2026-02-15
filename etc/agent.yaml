@@ -3,7 +3,11 @@ version: v1.0
 
 accessServers:
   type: etcd
-  endpoints: "127.0.0.1:2379"
+  endpoints: "tcp://127.0.0.1:2379"
+  syncMetaInterval: 30s
+
+controller:
+  endpoints: "tcp://127.0.0.1:26688"
   syncMetaInterval: 30s
 
 reporters:

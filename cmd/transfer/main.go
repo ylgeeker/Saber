@@ -33,7 +33,14 @@ func main() {
 
 	rootCmd.PersistentFlags().StringVarP(&transfer.ConfigFilePath, "config", "c", "./etc/transfer.yaml", "")
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
+
+	rootCmd.AddCommand(transfer.StartCmd)
+	rootCmd.AddCommand(transfer.StopCmd)
+	rootCmd.AddCommand(transfer.RestartCmd)
+	rootCmd.AddCommand(transfer.ReloadCmd)
+	rootCmd.AddCommand(transfer.HealthCheckCmd)
 	rootCmd.AddCommand(transfer.VersionCmd)
+
 	if err := rootCmd.Execute(); err != nil {
 		logger.Errorf("failed to start transfer server. errmsg:%s", err.Error())
 		return

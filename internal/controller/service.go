@@ -18,14 +18,23 @@ package controller
 
 import (
 	"context"
-	"net"
-	"strings"
 
 	"os-artificer/saber/internal/controller/config"
 	"os-artificer/saber/internal/controller/server"
+	"os-artificer/saber/pkg/logger"
+	"os-artificer/saber/pkg/sbnet"
 
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/viper"
 )
+
+// controllerUnmarshalOpt composes default viper hooks with string->Endpoint so
+// service.listenAddress (string) unmarshals into sbnet.Endpoint.
+var controllerUnmarshalOpt = viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
+	mapstructure.StringToTimeDurationHookFunc(),
+	mapstructure.StringToSliceHookFunc(","),
+	sbnet.StringToEndpointHookFunc(),
+))
 
 // Service is the controller service.
 type Service struct {
@@ -33,7 +42,7 @@ type Service struct {
 }
 
 // CreateService creates a new controller service.
-func CreateService(ctx context.Context, address string, serviceID string) *Service {
+func CreateService(ctx context.Context, address sbnet.Endpoint, serviceID string) *Service {
 	svr := server.New(ctx, address, serviceID)
 	return &Service{
 		svr: svr,
@@ -51,36 +60,23 @@ func (s *Service) Close() error {
 }
 
 // loadControllerConfig reads config from ConfigFilePath and returns the listen address.
-func loadControllerConfig() string {
-	address := ":26688"
-
+func loadControllerConfig() {
 	if ConfigFilePath == "" {
-		return address
+		return
 	}
 
 	viper.SetConfigFile(ConfigFilePath)
 	viper.SetConfigType("yaml")
 
 	if err := viper.ReadInConfig(); err != nil {
-		return address
+		logger.Errorf("Failed to read config file: %v", err)
+		return
 	}
 
-	if err := viper.Unmarshal(&config.Cfg); err != nil {
-		return address
+	if err := viper.Unmarshal(&config.Cfg, controllerUnmarshalOpt); err != nil {
+		logger.Errorf("Failed to unmarshal config: %v", err)
+		return
 	}
 
-	if config.Cfg.Service.ListenAddress != "" {
-		address = parseListenAddress(config.Cfg.Service.ListenAddress)
-	}
-
-	return address
-}
-
-// parseListenAddress parses the listen address.
-func parseListenAddress(addr string) string {
-	addr = strings.TrimPrefix(addr, "tcp://")
-	if _, port, err := net.SplitHostPort(addr); err == nil && port != "" {
-		return ":" + port
-	}
-	return addr
+	logger.Infof("Loaded controller config: %+v", config.Cfg)
 }

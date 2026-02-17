@@ -19,6 +19,8 @@ package sbnet
 import (
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func TestNewEndpointFromString(t *testing.T) {
@@ -225,5 +227,53 @@ func TestNewEndpointFromString_roundTrip(t *testing.T) {
 		if ep2.Protocol != ep.Protocol || ep2.Host != ep.Host || ep2.Port != ep.Port {
 			t.Errorf("round-trip parse = %+v, want %+v", ep2, ep)
 		}
+	}
+}
+
+func TestEndpoint_UnmarshalYAML(t *testing.T) {
+	type config struct {
+		ListenAddress Endpoint `yaml:"listenAddress"`
+	}
+	tests := []struct {
+		name    string
+		yaml    string
+		want    Endpoint
+		wantErr bool
+	}{
+		{
+			name: "valid tcp",
+			yaml: `listenAddress: "tcp://127.0.0.1:26689"`,
+			want: Endpoint{Protocol: "tcp", Host: "127.0.0.1", Port: 26689},
+		},
+		{
+			name: "valid http",
+			yaml: `listenAddress: "http://localhost:80"`,
+			want: Endpoint{Protocol: "http", Host: "localhost", Port: 80},
+		},
+		{
+			name:    "invalid",
+			yaml:    `listenAddress: "no-scheme"`,
+			wantErr: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var c config
+			err := yaml.Unmarshal([]byte(tt.yaml), &c)
+			if tt.wantErr {
+				if err == nil {
+					t.Errorf("yaml.Unmarshal() expected error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Errorf("yaml.Unmarshal() error: %v", err)
+				return
+			}
+			got := c.ListenAddress
+			if got.Protocol != tt.want.Protocol || got.Host != tt.want.Host || got.Port != tt.want.Port {
+				t.Errorf("ListenAddress = %+v, want %+v", got, tt.want)
+			}
+		})
 	}
 }

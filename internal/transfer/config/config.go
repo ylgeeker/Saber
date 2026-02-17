@@ -17,8 +17,9 @@
 package config
 
 import (
-	"os-artificer/saber/pkg/logger"
 	"time"
+
+	"os-artificer/saber/pkg/logger"
 )
 
 // Cfg global config (loaded by run)
@@ -56,10 +57,6 @@ var Cfg = Configuration{
 		},
 	},
 
-	Service: ServiceConfig{
-		ListenAddress: "tcp://127.0.0.1:26689",
-	},
-
 	Log: LogConfig{
 		FileName:       "./logs/transfer.log",
 		LogLevel:       logger.DebugLevel,
@@ -79,10 +76,6 @@ type DiscoveryConfig struct {
 	DialKeepAliveTimeout  time.Duration `yaml:"dialKeepAliveTimeout"`
 	RegistryRootKeyPrefix string        `yaml:"registryRootKeyPrefix"`
 	RegistryTTL           int64         `yaml:"registryTTL"` // in seconds
-}
-
-type ServiceConfig struct {
-	ListenAddress string `yaml:"listenAddress"`
 }
 
 // LogConfig log config
@@ -111,7 +104,6 @@ type Configuration struct {
 	Name      string          `yaml:"name"`
 	Version   string          `yaml:"version"`
 	Discovery DiscoveryConfig `yaml:"discovery"`
-	Service   ServiceConfig   `yaml:"service"`
 	Source    []SourceConfig  `yaml:"source"`
 	Sink      []SinkConfig    `yaml:"sink"`
 	Log       LogConfig       `yaml:"log"`

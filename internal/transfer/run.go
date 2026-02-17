@@ -70,7 +70,7 @@ func reloadConfig() {
 	if err := viper.ReadInConfig(); err != nil {
 		return
 	}
-	if err := viper.Unmarshal(&config.Cfg); err != nil {
+	if err := viper.Unmarshal(&config.Cfg, transferUnmarshalOpt); err != nil {
 		return
 	}
 	if err := initLogger(&config.Cfg.Log); err != nil {
@@ -83,14 +83,14 @@ func reloadConfig() {
 func Run(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
-	address := loadTransferConfig()
+	loadTransferConfig()
 
 	if err := initLogger(&config.Cfg.Log); err != nil {
 		logger.Errorf("Failed to init logger: %v", err)
 		return err
 	}
 
-	svr, err := CreateService(ctx, address, "")
+	svr, err := CreateService(ctx, "")
 	if err != nil {
 		logger.Errorf("Failed to create transfer service: %v", err)
 		return err

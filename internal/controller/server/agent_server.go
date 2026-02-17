@@ -27,6 +27,7 @@ import (
 	"os-artificer/saber/pkg/constant"
 	"os-artificer/saber/pkg/logger"
 	"os-artificer/saber/pkg/proto"
+	"os-artificer/saber/pkg/sbnet"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
@@ -34,23 +35,23 @@ import (
 
 var ErrConnectionNotFound = errors.New("connection not found")
 
+// New returns a new AgentServer for the given context, listen address, and optional serviceID.
+func New(ctx context.Context, address sbnet.Endpoint, serviceID string) *AgentServer {
+	_ = serviceID
+	return &AgentServer{
+		ctx:     ctx,
+		address: address,
+		manager: NewConnectionManager(),
+	}
+}
+
 type AgentServer struct {
 	proto.UnimplementedControllerServiceServer
 
-	ctx       context.Context
-	address   string
-	serviceID string
-	manager   *ConnectionManager
-	grpcSvr   *grpc.Server
-}
-
-func New(ctx context.Context, address string, serviceID string) *AgentServer {
-	return &AgentServer{
-		ctx:       ctx,
-		address:   address,
-		serviceID: serviceID,
-		manager:   NewConnectionManager(),
-	}
+	ctx     context.Context
+	address sbnet.Endpoint
+	manager *ConnectionManager
+	grpcSvr *grpc.Server
 }
 
 // extractClientInfo is unused; clientID is read from first AgentRequest in Connect.
@@ -143,12 +144,12 @@ func (s *AgentServer) Run() error {
 
 	proto.RegisterControllerServiceServer(svr, s)
 	s.grpcSvr = svr
-	lis, err := net.Listen("tcp", s.address)
+	lis, err := net.Listen(s.address.Protocol, s.address.HostPort())
 	if err != nil {
 		return err
 	}
 
-	logger.Infof("Server listening at %v", lis.Addr())
+	logger.Infof("Server listening at %s", lis.Addr().String())
 	return svr.Serve(lis)
 }
 

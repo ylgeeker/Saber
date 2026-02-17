@@ -10,15 +10,12 @@ discovery:
   dialKeepAliveTime: 5s
   dialKeepAliveTimeout: 5s
   registryRootKeyPrefix: os-artificer/saber
-
-service:
-  listenAddress: tcp://127.0.0.1:26689
+  registryTTL: 60
 
 source:
   - type: agent
     config:
-      endpoints: tcp://127.0.0.1:26688
-      syncMetaInterval: 30s
+      endpoint: tcp://127.0.0.1:26688
 
 sink:
   - type: kafka

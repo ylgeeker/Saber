@@ -16,39 +16,57 @@
 
 package config
 
-import "os-artificer/saber/pkg/logger"
+import (
+	"time"
+
+	"os-artificer/saber/pkg/logger"
+	"os-artificer/saber/pkg/sbnet"
+)
 
 var Cfg = Configuration{
 	Name:    "Controller",
 	Version: "v1.0.0",
 
 	Discovery: DiscoveryConfig{
-		Endpoints: "127.0.0.1:26688",
-		User:      "root",
-		Password:  "123456",
+		EtcdEndpoint:          "http://etcd-server:2379",
+		EtcdUser:              "root",
+		EtcdPassword:          "wktest",
+		DialTimeout:           5 * time.Second,
+		AutoSyncInterval:      10 * time.Second,
+		DialKeepAliveTime:     5 * time.Second,
+		DialKeepAliveTimeout:  5 * time.Second,
+		RegistryRootKeyPrefix: "os-artificer/saber",
+		RegistryTTL:           60,
 	},
 
 	Service: ServiceConfig{
-		ListenAddress: "127.0.0.1:26689",
+		ListenAddress: sbnet.Endpoint{Protocol: "tcp", Host: "127.0.0.1", Port: 26689},
 	},
-
 	Log: LogConfig{
-		FileName: "./logs/controller.log",
-		LogLevel: logger.DebugLevel,
-		FileSize: 100,
+		FileName:       "./logs/controller.log",
+		LogLevel:       logger.DebugLevel,
+		FileSize:       100,
+		MaxBackupCount: 10,
+		MaxBackupAge:   10,
 	},
 }
 
 // DiscoveryConfig discovery's config
 type DiscoveryConfig struct {
-	Endpoints string `yaml:"endpoints"`
-	User      string `yaml:"user"`
-	Password  string `yaml:"password"`
+	EtcdEndpoint          string        `yaml:"etcdEndpoint"`
+	EtcdUser              string        `yaml:"etcdUser"`
+	EtcdPassword          string        `yaml:"etcdPassword"`
+	DialTimeout           time.Duration `yaml:"dialTimeout"`
+	AutoSyncInterval      time.Duration `yaml:"autoSyncInterval"`
+	DialKeepAliveTime     time.Duration `yaml:"dialKeepAliveTime"`
+	DialKeepAliveTimeout  time.Duration `yaml:"dialKeepAliveTimeout"`
+	RegistryRootKeyPrefix string        `yaml:"registryRootKeyPrefix"`
+	RegistryTTL           int64         `yaml:"registryTTL"` // in seconds
 }
 
 // ServiceConfig service local config
 type ServiceConfig struct {
-	ListenAddress string `yaml:"listenAddress"`
+	ListenAddress sbnet.Endpoint `yaml:"listenAddress"`
 }
 
 // LogConfig log config

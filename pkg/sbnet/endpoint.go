@@ -17,10 +17,13 @@
 package sbnet
 
 import (
+	"encoding"
 	"fmt"
 	"net"
 	"strconv"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // Endpoint represents a host:port endpoint.
@@ -68,6 +71,40 @@ func (e *Endpoint) String() string {
 func (e *Endpoint) HostPort() string {
 	return net.JoinHostPort(e.Host, strconv.Itoa(e.Port))
 }
+
+// UnmarshalYAML implements yaml.Unmarshaler so that a YAML string (e.g. "tcp://127.0.0.1:26689") is parsed into Endpoint.
+func (e *Endpoint) UnmarshalYAML(value *yaml.Node) error {
+	if value == nil {
+		return nil
+	}
+	var s string
+	if err := value.Decode(&s); err != nil {
+		return fmt.Errorf("listenAddress: expected string (e.g. tcp://host:port): %w", err)
+	}
+	ep, err := NewEndpointFromString(s)
+	if err != nil {
+		return err
+	}
+	*e = *ep
+	return nil
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler so that viper/mapstructure can decode a string into Endpoint.
+func (e *Endpoint) UnmarshalText(text []byte) error {
+	s := string(text)
+	if s == "" {
+		return nil
+	}
+	ep, err := NewEndpointFromString(s)
+	if err != nil {
+		return err
+	}
+	*e = *ep
+	return nil
+}
+
+// Ensure *Endpoint implements encoding.TextUnmarshaler at compile time.
+var _ encoding.TextUnmarshaler = (*Endpoint)(nil)
 
 // splitSchemeAndAuthority splits s into "protocol" and "rest" (host:port) at "://" and validates both are non-empty.
 func splitSchemeAndAuthority(s string) (protocol, rest string, err error) {

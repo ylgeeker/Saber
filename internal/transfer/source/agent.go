@@ -25,6 +25,7 @@ import (
 	"os-artificer/saber/pkg/constant"
 	"os-artificer/saber/pkg/logger"
 	"os-artificer/saber/pkg/proto"
+	"os-artificer/saber/pkg/sbnet"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/keepalive"
@@ -37,14 +38,14 @@ var _ Source = (*AgentSource)(nil)
 // tracking long-lived connections via ConnectionManager, and delivering each
 // TransferRequest to the Handler.
 type AgentSource struct {
-	address string
+	address sbnet.Endpoint
 	connMgr *ConnectionManager
 }
 
 // NewAgentSource returns a Source that listens on address and serves TransferService PushData.
 // Long-lived client connections are tracked by an internal ConnectionManager.
 // Pass nil for connMgr to use a default manager with no connection limit.
-func NewAgentSource(address string, connMgr *ConnectionManager) *AgentSource {
+func NewAgentSource(address sbnet.Endpoint, connMgr *ConnectionManager) *AgentSource {
 	if connMgr == nil {
 		connMgr = NewConnectionManager(0)
 	}
@@ -73,12 +74,12 @@ func (p *AgentSource) Run(ctx context.Context, h Handler) error {
 	pushSrv := &pushDataServer{handler: h, connMgr: p.connMgr}
 	proto.RegisterTransferServiceServer(svr, pushSrv)
 
-	lis, err := net.Listen("tcp", p.address)
+	lis, err := net.Listen(p.address.Protocol, p.address.HostPort())
 	if err != nil {
 		return err
 	}
 
-	logger.Infof("Server listening at %v", lis.Addr())
+	logger.Infof("Server listening at %s", lis.Addr().String())
 
 	go func() {
 		<-ctx.Done()

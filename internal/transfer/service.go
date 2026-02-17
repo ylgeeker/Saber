@@ -18,15 +18,25 @@ package transfer
 
 import (
 	"context"
-	"net"
-	"strings"
+	"fmt"
 
 	"os-artificer/saber/internal/transfer/config"
 	"os-artificer/saber/internal/transfer/sink"
 	"os-artificer/saber/internal/transfer/source"
+	"os-artificer/saber/pkg/logger"
+	"os-artificer/saber/pkg/sbnet"
 
+	"github.com/go-viper/mapstructure/v2"
 	"github.com/spf13/viper"
 )
+
+// transferUnmarshalOpt composes default viper hooks with string->Endpoint so
+// service.listenAddress (string) unmarshals into sbnet.Endpoint.
+var transferUnmarshalOpt = viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
+	mapstructure.StringToTimeDurationHookFunc(),
+	mapstructure.StringToSliceHookFunc(","),
+	sbnet.StringToEndpointHookFunc(),
+))
 
 type Service struct {
 	svr       *source.AgentSource
@@ -37,18 +47,33 @@ type Service struct {
 
 // CreateService creates a new transfer service.
 // Sink is built from config.Cfg.Sink; if creation fails, returns an error.
-func CreateService(ctx context.Context, address string, serviceID string) (*Service, error) {
+func CreateService(ctx context.Context, serviceID string) (*Service, error) {
 	snk, err := NewSinkFromConfig(config.Cfg.Sink)
 	if err != nil {
 		return nil, err
 	}
+
 	handler := source.NewConnectionHandler(snk)
-	return &Service{
-		svr:       source.NewAgentSource(address, nil),
-		handler:   handler,
-		sink:      snk,
-		serviceID: serviceID,
-	}, nil
+
+	for _, src := range config.Cfg.Source {
+		if src.Type != "agent" {
+			continue
+		}
+
+		address, err := sbnet.NewEndpointFromString(src.Config["endpoint"].(string))
+		if err != nil {
+			return nil, err
+		}
+
+		return &Service{
+			svr:       source.NewAgentSource(*address, nil),
+			handler:   handler,
+			sink:      snk,
+			serviceID: serviceID,
+		}, nil
+	}
+
+	return nil, fmt.Errorf("source type not supported")
 }
 
 // Run starts the transfer service.
@@ -69,37 +94,24 @@ func (s *Service) Close() error {
 	return nil
 }
 
-// loadTransferConfig reads config from ConfigFilePath and returns the listen address.
-func loadTransferConfig() string {
-	address := ":26689"
-
+// loadTransferConfig reads config from ConfigFilePath into config.Cfg.
+func loadTransferConfig() {
 	if ConfigFilePath == "" {
-		return address
+		return
 	}
 
 	viper.SetConfigFile(ConfigFilePath)
 	viper.SetConfigType("yaml")
 
 	if err := viper.ReadInConfig(); err != nil {
-		return address
+		logger.Errorf("Failed to read config file: %v", err)
+		return
 	}
 
-	if err := viper.Unmarshal(&config.Cfg); err != nil {
-		return address
+	if err := viper.Unmarshal(&config.Cfg, transferUnmarshalOpt); err != nil {
+		logger.Errorf("Failed to unmarshal config: %v", err)
+		return
 	}
 
-	if config.Cfg.Service.ListenAddress != "" {
-		address = parseListenAddress(config.Cfg.Service.ListenAddress)
-	}
-
-	return address
-}
-
-// parseListenAddress parses the listen address.
-func parseListenAddress(addr string) string {
-	addr = strings.TrimPrefix(addr, "tcp://")
-	if _, port, err := net.SplitHostPort(addr); err == nil && port != "" {
-		return ":" + port
-	}
-	return addr
+	logger.Infof("Loaded transfer config: %+v", config.Cfg)
 }

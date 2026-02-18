@@ -17,6 +17,7 @@
 package discovery
 
 import (
+	"crypto/tls"
 	"time"
 
 	"os-artificer/saber/pkg/gerrors"
@@ -66,10 +67,11 @@ type options struct {
 	registryRootKeyPrefix string
 	maxUnaryRetries       uint
 	Logger                *zap.Logger
+	tls                   *tls.Config
 }
 
 func (o options) Config() clientv3.Config {
-	return clientv3.Config{
+	cfg := clientv3.Config{
 		Username:  o.user,
 		Password:  o.password,
 		Endpoints: o.endpoints,
@@ -95,6 +97,10 @@ func (o options) Config() clientv3.Config {
 		// Logger export the gRPC log into the custom.
 		Logger: o.Logger,
 	}
+	if o.tls != nil {
+		cfg.TLS = o.tls
+	}
+	return cfg
 }
 
 type funcOptions struct {
@@ -235,6 +241,17 @@ func OptionLogger(val *zap.Logger) *funcOptions {
 	return &funcOptions{
 		f: func(opt *options) error {
 			opt.Logger = val
+			return nil
+		},
+	}
+}
+
+// OptionTLS sets the TLS config for etcd client. Use when etcd uses https:// endpoints.
+// For https with no cert verification (dev/test only), use &tls.Config{InsecureSkipVerify: true}.
+func OptionTLS(cfg *tls.Config) *funcOptions {
+	return &funcOptions{
+		f: func(opt *options) error {
+			opt.tls = cfg
 			return nil
 		},
 	}

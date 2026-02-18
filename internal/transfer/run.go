@@ -22,12 +22,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"os-artificer/saber/internal/transfer/apm"
-	"os-artificer/saber/internal/transfer/config"
 	"os-artificer/saber/pkg/logger"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 func setupGracefulShutdown(svr *Service) {
@@ -41,72 +38,12 @@ func setupGracefulShutdown(svr *Service) {
 	}()
 }
 
-// initLogger initializes the global logger from agent config (pkg/logger).
-func initLogger(cfg *config.LogConfig) error {
-	if cfg == nil {
-		return nil
-	}
-
-	logCfg := logger.Config{
-		Filename:   cfg.FileName,
-		LogLevel:   cfg.LogLevel,
-		MaxSizeMB:  cfg.FileSize,
-		MaxBackups: cfg.MaxBackupCount,
-		MaxAge:     cfg.MaxBackupAge,
-	}
-
-	l := logger.NewZapLogger(logCfg)
-	logger.SetLogger(l)
-
-	return nil
-}
-
-// initAPM creates the APM service from config. Business metrics are defined in
-// internal/transfer/apm/metrics.go and registered to the default registry.
-func initAPM(cfg *config.APMConfig) (*apm.APM, error) {
-	if cfg == nil {
-		return nil, nil
-	}
-	return apm.NewAPM(cfg.Enabled, cfg.Endpoint), nil
-}
-
-// reloadConfig re-reads config from ConfigFilePath and re-inits logger (for SIGHUP).
-func reloadConfig() {
-	if ConfigFilePath == "" {
-		return
-	}
-	viper.SetConfigFile(ConfigFilePath)
-	viper.SetConfigType("yaml")
-	if err := viper.ReadInConfig(); err != nil {
-		return
-	}
-	if err := viper.Unmarshal(&config.Cfg, transferUnmarshalOpt); err != nil {
-		return
-	}
-	if err := initLogger(&config.Cfg.Log); err != nil {
-		logger.Warnf("reload config: init logger failed: %v", err)
-		return
-	}
-	logger.Infof("config reloaded")
-}
-
 func Run(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 
 	loadTransferConfig()
 
-	if err := initLogger(&config.Cfg.Log); err != nil {
-		logger.Errorf("Failed to init logger: %v", err)
-		return err
-	}
-
-	apmSvc, err := initAPM(&config.Cfg.APM)
-	if err != nil {
-		logger.Errorf("Failed to init APM: %v", err)
-		return err
-	}
-
-	svr, err := CreateService(ctx, "", apmSvc)
+	svr, err := CreateService(ctx, "")
 	if err != nil {
 		logger.Errorf("Failed to create transfer service: %v", err)
 		return err
@@ -116,9 +53,12 @@ func Run(cmd *cobra.Command, args []string) error {
 
 	reloadCh := make(chan os.Signal, 1)
 	signal.Notify(reloadCh, syscall.SIGHUP)
+
 	go func() {
 		for range reloadCh {
-			reloadConfig()
+			if err := svr.ReloadConfig(); err != nil {
+				logger.Warnf("reload config: %v", err)
+			}
 		}
 	}()
 

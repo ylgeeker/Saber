@@ -4,12 +4,12 @@ version: v1.0
 discovery:
   etcdEndpoint: http://etcd-server:2379
   etcdUser: root
-  etcdPassword: wktest
+  etcdPassword: sabertest
   dialTimeout: 5s
   autoSyncInterval: 10s
   dialKeepAliveTime: 5s
   dialKeepAliveTimeout: 5s
-  registryRootKeyPrefix: os-artificer/saber
+  registryRootKeyPrefix: /os-artificer/saber
   registryTTL: 60
 
 apm:

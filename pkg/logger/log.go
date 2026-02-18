@@ -16,7 +16,11 @@
 
 package logger
 
-import "log"
+import (
+	"log"
+
+	"go.uber.org/zap"
+)
 
 // Logger is a universal logging interface that can be
 // flexibly replaced with other logging libraies
@@ -53,6 +57,14 @@ var l Logger
 
 func SetLogger(log Logger) {
 	l = log
+}
+
+func GetOriginLogger() *zap.Logger {
+	if l == nil {
+		return nil
+	}
+
+	return l.(*ZapLogger).logger
 }
 
 func Debugf(format string, args ...any) {

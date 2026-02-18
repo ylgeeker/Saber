@@ -98,7 +98,7 @@ func (c Client) CreateRegistry() *Registry {
 	registry := &Registry{
 		serviceID:        c.opts.serviceID,
 		rootKey:          rootKey,
-		ttl:              defaultTTL,
+		ttl:              int64(c.opts.ttl),
 		createEtcdClient: c.createEtcdClient,
 	}
 

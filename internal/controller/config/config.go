@@ -30,7 +30,7 @@ var Cfg = Configuration{
 	Discovery: DiscoveryConfig{
 		EtcdEndpoint:          "http://etcd-server:2379",
 		EtcdUser:              "root",
-		EtcdPassword:          "wktest",
+		EtcdPassword:          "sabertest",
 		DialTimeout:           5 * time.Second,
 		AutoSyncInterval:      10 * time.Second,
 		DialKeepAliveTime:     5 * time.Second,
@@ -76,6 +76,12 @@ type DiscoveryConfig struct {
 	DialKeepAliveTimeout  time.Duration `yaml:"dialKeepAliveTimeout"`
 	RegistryRootKeyPrefix string        `yaml:"registryRootKeyPrefix"`
 	RegistryTTL           int64         `yaml:"registryTTL"` // in seconds
+	// TLS: when etcd uses https://, set UseTLS true. InsecureSkipVerify is for dev/test only.
+	UseTLS             bool   `yaml:"useTLS"`
+	InsecureSkipVerify bool   `yaml:"insecureSkipVerify"`
+	EtcdCACert         string `yaml:"etcdCACert"` // path to CA cert (optional)
+	EtcdCert           string `yaml:"etcdCert"`   // path to client cert (optional)
+	EtcdKey            string `yaml:"etcdKey"`    // path to client key (optional)
 }
 
 // APMConfig APM config

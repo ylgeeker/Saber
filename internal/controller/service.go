@@ -110,6 +110,7 @@ func buildDiscoveryTLS(cfg *config.DiscoveryConfig) (*tls.Config, error) {
 	if !cfg.UseTLS && !cfg.InsecureSkipVerify && cfg.EtcdCACert == "" && cfg.EtcdCert == "" && cfg.EtcdKey == "" {
 		return nil, nil
 	}
+
 	tlsCfg := &tls.Config{InsecureSkipVerify: cfg.InsecureSkipVerify}
 	if cfg.EtcdCACert != "" {
 		b, err := os.ReadFile(cfg.EtcdCACert)
@@ -122,6 +123,7 @@ func buildDiscoveryTLS(cfg *config.DiscoveryConfig) (*tls.Config, error) {
 		}
 		tlsCfg.RootCAs = pool
 	}
+
 	if cfg.EtcdCert != "" && cfg.EtcdKey != "" {
 		cert, err := tls.LoadX509KeyPair(cfg.EtcdCert, cfg.EtcdKey)
 		if err != nil {
@@ -129,6 +131,7 @@ func buildDiscoveryTLS(cfg *config.DiscoveryConfig) (*tls.Config, error) {
 		}
 		tlsCfg.Certificates = []tls.Certificate{cert}
 	}
+
 	return tlsCfg, nil
 }
 
@@ -164,6 +167,7 @@ func (s *Service) RegisterSelf() error {
 		discovery.OptionTTL(int(cfg.RegistryTTL)),
 		discovery.OptionLogger(logger.GetOriginLogger()),
 	}
+
 	if tlsCfg != nil {
 		opts = append(opts, discovery.OptionTLS(tlsCfg))
 	}

@@ -17,14 +17,31 @@
 package client
 
 import (
+	"bytes"
+	"context"
+	"fmt"
 	"io"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 
+	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
+
+// crlfWriter wraps w and converts \n to \r\n so that in raw terminal mode each newline
+// moves the cursor to column 0, fixing help/command output formatting.
+type crlfWriter struct{ w io.Writer }
+
+func (c *crlfWriter) Write(p []byte) (n int, err error) {
+	q := bytes.ReplaceAll(p, []byte("\n"), []byte("\r\n"))
+	_, err = c.w.Write(q)
+	if err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
 
 // stdio ties stdin and stdout into a single io.ReadWriter for use with term.NewTerminal.
 type stdio struct{}
@@ -45,11 +62,10 @@ func setupGracefulShutdown(svr *Service) {
 
 // runInteractive uses golang.org/x/term.Terminal for line editing, echo, and Ctrl+L clear.
 // See: https://pkg.go.dev/golang.org/x/term#Terminal
-func runInteractive() error {
+func runInteractive(root *cobra.Command) error {
 	fd := int(os.Stdin.Fd())
 	if !term.IsTerminal(fd) {
-		// Not a TTY: fall back to simple line reading without raw mode.
-		return runInteractiveStdin()
+		return runInteractiveStdin(root)
 	}
 	oldState, err := term.MakeRaw(fd)
 	if err != nil {
@@ -69,17 +85,14 @@ func runInteractive() error {
 			}
 			return err
 		}
+
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
-		switch strings.ToLower(line) {
-		case "exit", "quit":
+
+		if handleInteractiveCommand(root, line, func() { clearScreenTerminal(t) }) {
 			return nil
-		case "clear":
-			clearScreenTerminal(t)
-		default:
-			// placeholder: unknown command, can be extended later
 		}
 	}
 	return nil
@@ -91,7 +104,7 @@ func clearScreenTerminal(t *term.Terminal) {
 }
 
 // runInteractiveStdin is used when stdin is not a TTY (e.g. pipe); no raw mode, no Ctrl+L.
-func runInteractiveStdin() error {
+func runInteractiveStdin(root *cobra.Command) error {
 	buf := make([]byte, 0, 256)
 	for {
 		os.Stdout.WriteString("SABER> ")
@@ -108,23 +121,59 @@ func runInteractiveStdin() error {
 			if n == 0 {
 				continue
 			}
+
 			c := b[0]
 			if c == '\n' || c == '\r' {
 				break
 			}
+
 			buf = append(buf, c)
 			os.Stdout.Write(b[:])
 		}
+
 		line := strings.TrimSpace(string(buf))
 		if line == "" {
 			continue
 		}
-		switch strings.ToLower(line) {
-		case "exit", "quit":
+
+		if handleInteractiveCommand(root, line, func() { os.Stdout.WriteString("\x1b[2J\x1b[H") }) {
 			return nil
-		case "clear":
-			os.Stdout.WriteString("\x1b[2J\x1b[H")
-		default:
 		}
 	}
+}
+
+// handleInteractiveCommand handles one interactive line. Returns true if the session should exit (exit/quit).
+func handleInteractiveCommand(root *cobra.Command, line string, clearFn func()) bool {
+	lower := strings.ToLower(line)
+	if lower == "exit" || lower == "quit" {
+		return true
+	}
+	if lower == "clear" {
+		clearFn()
+		return false
+	}
+
+	parts := strings.Fields(line)
+	if len(parts) == 0 {
+		return false
+	}
+	subName := strings.ToLower(parts[0])
+	for _, c := range root.Commands() {
+		if c.Name() == subName {
+			root.SetArgs(parts)
+			// In raw terminal mode, \n does not move cursor to column 0; wrap stdout/stderr
+			// so that \n becomes \r\n and help/output format correctly.
+			root.SetOut(&crlfWriter{w: os.Stdout})
+			root.SetErr(&crlfWriter{w: os.Stderr})
+			err := root.ExecuteContext(context.Background())
+			root.SetOut(nil)
+			root.SetErr(nil)
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+			}
+			return false
+		}
+	}
+	fmt.Fprintf(os.Stderr, "Unknown command %q. Try 'help' or 'help list'.\n", parts[0])
+	return false
 }

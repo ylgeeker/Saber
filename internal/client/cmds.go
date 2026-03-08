@@ -36,3 +36,28 @@ var HealthCheckCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 	},
 }
+
+var (
+	listHost bool
+	listNum  int
+)
+
+var ListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List resources (e.g. hosts)",
+	RunE:  runList,
+}
+
+func init() {
+	// -h is reserved by Cobra for help; use -H/--host for "query host information".
+	ListCmd.Flags().BoolVarP(&listHost, "host", "H", false, "query host information")
+	ListCmd.Flags().IntVarP(&listNum, "num", "n", 10, "number of items to display")
+}
+
+func runList(cmd *cobra.Command, args []string) error {
+	// -h: 查询主机信息
+	// -n: 显示数量
+	_ = listHost
+	_ = listNum
+	return nil
+}

@@ -24,7 +24,7 @@ import (
 
 func Run(cmd *cobra.Command, args []string) error {
 	if InteractiveMode {
-		return runInteractive()
+		return runInteractive(cmd)
 	}
 
 	ctx := context.Background()

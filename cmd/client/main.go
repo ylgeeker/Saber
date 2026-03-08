@@ -36,7 +36,9 @@ func main() {
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
 
 	rootCmd.AddCommand(client.HealthCheckCmd)
+	rootCmd.AddCommand(client.ListCmd)
 	rootCmd.AddCommand(client.VersionCmd)
+	rootCmd.InitDefaultHelpCmd()
 
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
